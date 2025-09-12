@@ -1,0 +1,54 @@
+[package]
+name = "ghostcp"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["api", "ui"]
+resolver = "2"
+
+[workspace.dependencies]
+# Core
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Web/API
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
+
+# Auth & Security
+jsonwebtoken = "9.0"
+argon2 = { version = "0.5", features = ["std"] }
+password-hash = "0.5"
+rand = "0.8"
+
+# DNS and HTTP clients
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+async-trait = "0.1"
+
+# Templates
+tera = "1.19"
+
+# Config
+config = "0.14"
+dotenvy = "0.15"
+
+# Leptos (UI)
+leptos = { version = "0.6", features = ["csr", "ssr"] }
+leptos_meta = { version = "0.6", features = ["csr", "ssr"] }
+leptos_router = { version = "0.6", features = ["csr", "ssr"] }
+leptos_axum = "0.6"
+
+[dependencies]

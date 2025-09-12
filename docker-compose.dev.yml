@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ghostcp
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ghostcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghostcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  ghostcp-api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://ghostcp:password@postgres/ghostcp
+      RUST_LOG: ghostcp_api=debug,tower_http=debug
+    volumes:
+      - ./api:/app/api
+      - ./templates:/app/templates
+    depends_on:
+      postgres:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./api/src
+          target: /app/api/src
+        - action: rebuild
+          path: ./api/Cargo.toml
+
+volumes:
+  postgres_data:
+  redis_data:

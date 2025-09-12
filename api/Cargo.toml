@@ -1,0 +1,37 @@
+[package]
+name = "ghostcp-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+sqlx = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+password-hash = { workspace = true }
+rand = { workspace = true }
+tera = { workspace = true }
+config = { workspace = true }
+dotenvy = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+
+# Additional API-specific dependencies
+clap = { version = "4.0", features = ["derive"] }
+md5 = "0.7"
+lettre = "0.11"
+validator = { version = "0.16", features = ["derive"] }
+trust-dns-resolver = "0.23"

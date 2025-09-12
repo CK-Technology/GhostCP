@@ -1,0 +1,26 @@
+FROM rust:1.75-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cargo-watch for development
+RUN cargo install cargo-watch
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY api ./api
+
+# Build dependencies (cached layer)
+RUN cd api && cargo build --release
+
+# Expose port
+EXPOSE 8080
+
+# Development command with auto-reload
+CMD ["cargo", "watch", "-x", "run", "--workdir", "api"]
