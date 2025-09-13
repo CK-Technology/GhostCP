@@ -12,6 +12,9 @@ pub mod dovecot;
 
 use nginx::NginxTemplateData;
 
+// Alias for backwards compatibility
+pub type TemplateManager = TemplateEngine;
+
 #[derive(Debug, Clone)]
 pub struct TemplateEngine {
     pub tera: Tera,

@@ -10,3 +10,7 @@ pub async fn list_certificates(State(_state): State<AppState>) -> ApiResult<Json
 pub async fn request_certificate(State(_state): State<AppState>) -> ApiResult<Json<Value>> {
     Ok(Json(serde_json::json!({"message": "Request certificate - TODO"})))
 }
+
+pub async fn renew_certificate(State(_state): State<AppState>) -> ApiResult<Json<Value>> {
+    Ok(Json(serde_json::json!({"message": "Renew certificate - TODO"})))
+}

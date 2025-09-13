@@ -10,7 +10,7 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use uuid::Uuid;
 use crate::AppState;
-use crate::models::users::{User, UserRole};
+use crate::models::user::{User, UserRole};
 use crate::auth::totp::{TotpManager, TotpSecret};
 
 #[derive(Debug, Serialize, Deserialize)]

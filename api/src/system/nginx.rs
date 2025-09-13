@@ -260,13 +260,17 @@ impl NginxManager {
             .to_string();
         
         // Count sites
-        let sites_available = fs::read_dir(&self.sites_available).await?
-            .filter_map(|entry| entry.ok())
-            .count();
-        
-        let sites_enabled = fs::read_dir(&self.sites_enabled).await?
-            .filter_map(|entry| entry.ok())
-            .count();
+        let mut sites_available = 0;
+        let mut read_dir = fs::read_dir(&self.sites_available).await?;
+        while let Some(_entry) = read_dir.next_entry().await? {
+            sites_available += 1;
+        }
+
+        let mut sites_enabled = 0;
+        let mut read_dir = fs::read_dir(&self.sites_enabled).await?;
+        while let Some(_entry) = read_dir.next_entry().await? {
+            sites_enabled += 1;
+        }
         
         Ok(NginxStatus {
             is_running,

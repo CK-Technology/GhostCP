@@ -1,6 +1,6 @@
 // Middleware modules
-pub mod auth;
-pub mod rate_limit;
+// pub mod auth;  // TODO: Implement auth middleware module
+// pub mod rate_limit;  // TODO: Implement rate limiting
 
 use axum::{
     extract::{Request, State},

@@ -29,11 +29,26 @@ pub struct ListDnsZonesResponse {
     pub limit: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct DnsZoneWithRecordCount {
-    #[serde(flatten)]
-    pub zone: DnsZone,
-    pub records_count: i32,
+    // All DnsZone fields
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub domain: String,
+    pub dns_provider: String,
+    pub provider_zone_id: Option<String>,
+    pub primary_ns: String,
+    pub admin_email: String,
+    pub serial: i32,
+    pub refresh_interval: i32,
+    pub retry_interval: i32,
+    pub expire_interval: i32,
+    pub minimum_ttl: i32,
+    pub dnssec_enabled: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+    // Additional field
+    pub records_count: i64,
 }
 
 pub async fn list_dns_zones(
@@ -44,7 +59,7 @@ pub async fn list_dns_zones(
     let limit = params.limit.unwrap_or(20).min(100);
     let offset = (page - 1) * limit;
 
-    let mut query = "SELECT z.*, COUNT(r.id) as records_count FROM dns_zones z LEFT JOIN dns_records r ON z.id = r.zone_id WHERE 1=1".to_string();
+    let mut query = "SELECT z.*, CAST(COUNT(r.id) as BIGINT) as records_count FROM dns_zones z LEFT JOIN dns_records r ON z.id = r.zone_id WHERE 1=1".to_string();
     
     if let Some(user_id) = params.user_id {
         query.push_str(&format!(" AND z.user_id = '{}'", user_id));
@@ -289,6 +304,7 @@ pub async fn sync_dns_zone(
         .execute(&state.db)
         .await?;
 
+    let records_count = provider_records.len();
     for provider_record in provider_records {
         sqlx::query(
             "INSERT INTO dns_records (zone_id, name, record_type, value, ttl, priority) VALUES ($1, $2, $3, $4, $5, $6)"
@@ -305,6 +321,68 @@ pub async fn sync_dns_zone(
 
     Ok(Json(serde_json::json!({
         "message": "DNS zone synchronized successfully",
-        "records_synced": provider_records.len()
+        "records_synced": records_count
+    })))
+}
+
+pub async fn zone_transfer(
+    State(state): State<AppState>,
+    Path(zone_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    // Get the zone
+    let zone = sqlx::query_as::<_, DnsZone>(
+        "SELECT * FROM dns_zones WHERE id = $1"
+    )
+    .bind(zone_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+
+    // Get DNS provider
+    let provider = state.dns_providers.get(&zone.dns_provider)
+        .ok_or_else(|| ApiError::BadRequest(format!("DNS provider '{}' not available", zone.dns_provider)))?;
+
+    // Export zone from provider
+    let provider_zone_id = zone.provider_zone_id.clone().unwrap_or_default();
+    let zone_file = provider.export_zone(&provider_zone_id).await
+        .map_err(|e| ApiError::BadRequest(format!("DNS provider error: {}", e)))?;
+
+    Ok(Json(serde_json::json!({
+        "message": "Zone transfer completed",
+        "zone_file": zone_file
+    })))
+}
+
+pub async fn enable_dnssec(
+    State(state): State<AppState>,
+    Path(zone_id): Path<Uuid>,
+) -> ApiResult<Json<Value>> {
+    // Get the zone
+    let zone = sqlx::query_as::<_, DnsZone>(
+        "SELECT * FROM dns_zones WHERE id = $1"
+    )
+    .bind(zone_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+
+    // Get DNS provider
+    let provider = state.dns_providers.get(&zone.dns_provider)
+        .ok_or_else(|| ApiError::BadRequest(format!("DNS provider '{}' not available", zone.dns_provider)))?;
+
+    // Enable DNSSEC
+    let provider_zone_id = zone.provider_zone_id.clone().unwrap_or_default();
+    provider.set_dnssec(&provider_zone_id, true).await
+        .map_err(|e| ApiError::BadRequest(format!("DNS provider error: {}", e)))?;
+
+    // Update database
+    sqlx::query("UPDATE dns_zones SET dnssec_enabled = true WHERE id = $1")
+        .bind(zone_id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "message": "DNSSEC enabled successfully",
+        "zone_id": zone_id
     })))
 }

@@ -14,3 +14,7 @@ pub async fn create_web_domain(State(_state): State<AppState>) -> ApiResult<Json
 pub async fn get_web_domain(State(_state): State<AppState>) -> ApiResult<Json<Value>> {
     Ok(Json(serde_json::json!({"message": "Get web domain - TODO"})))
 }
+
+pub async fn enable_ssl(State(_state): State<AppState>) -> ApiResult<Json<Value>> {
+    Ok(Json(serde_json::json!({"message": "Enable SSL - TODO"})))
+}

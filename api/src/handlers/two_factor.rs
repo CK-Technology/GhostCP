@@ -6,9 +6,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use crate::AppState;
 use crate::handlers::auth::Claims;
 use crate::auth::totp::{TotpManager, TotpSetupData};
+use crate::models::user::User;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EnableTotpRequest {

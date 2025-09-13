@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::AppState;
 use crate::handlers::auth::Claims;
-use crate::system::monitoring::{SystemMonitor, SystemMetrics, ServiceStatus};
+use crate::system::monitoring::{SystemMonitor, SystemMetrics, FlatSystemMetrics, ServiceStatus};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MonitoringQuery {
@@ -20,8 +20,8 @@ pub struct MonitoringQuery {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MetricsResponse {
-    pub current_metrics: SystemMetrics,
-    pub historical_metrics: Vec<SystemMetrics>,
+    pub current_metrics: FlatSystemMetrics,
+    pub historical_metrics: Vec<FlatSystemMetrics>,
     pub services: Vec<ServiceStatus>,
 }
 
@@ -39,7 +39,7 @@ pub async fn get_current_metrics(
 ) -> Result<impl IntoResponse, StatusCode> {
     let monitor = SystemMonitor::new();
     
-    match monitor.collect_metrics().await {
+    match monitor.collect_flat_metrics().await {
         Ok(metrics) => Ok(Json(metrics)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
@@ -52,7 +52,7 @@ pub async fn get_metrics_history(
     Query(params): Query<MonitoringQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let monitor = SystemMonitor::new();
-    let current_metrics = monitor.collect_metrics().await
+    let current_metrics = monitor.collect_flat_metrics().await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     // Get historical metrics from database
@@ -61,7 +61,7 @@ pub async fn get_metrics_history(
     });
     
     let historical_metrics = sqlx::query_as!(
-        SystemMetrics,
+        FlatSystemMetrics,
         r#"
         SELECT 
             cpu_usage,
@@ -200,7 +200,7 @@ pub async fn prometheus_metrics(
 ) -> Result<impl IntoResponse, StatusCode> {
     let monitor = SystemMonitor::new();
     
-    let metrics = monitor.collect_metrics().await
+    let metrics = monitor.collect_flat_metrics().await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     let prometheus_format = format!(
@@ -278,7 +278,7 @@ pub async fn start_metrics_collection(
             interval.tick().await;
             
             // Collect and store metrics
-            if let Ok(metrics) = monitor.collect_metrics().await {
+            if let Ok(metrics) = monitor.collect_flat_metrics().await {
                 let _ = sqlx::query!(
                     r#"
                     INSERT INTO system_metrics (

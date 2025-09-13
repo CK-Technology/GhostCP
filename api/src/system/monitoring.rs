@@ -110,6 +110,54 @@ pub struct ServiceStatus {
     pub enabled: bool,
     pub memory_usage_mb: Option<u64>,
     pub cpu_usage_percent: Option<f64>,
+    // Additional fields for handler compatibility
+    pub memory_usage: Option<u64>,
+    pub cpu_usage: Option<f64>,
+    pub pid: Option<u32>,
+    pub timestamp: DateTime<Utc>,
+}
+
+// Alias for backwards compatibility
+pub type SystemMonitor = MonitoringManager;
+
+// Flatter SystemMetrics for compatibility with handlers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlatSystemMetrics {
+    pub cpu_usage: f64,
+    pub memory_total: u64,
+    pub memory_used: u64,
+    pub memory_available: u64,
+    pub disk_total: u64,
+    pub disk_used: u64,
+    pub disk_available: u64,
+    pub network_rx_bytes: u64,
+    pub network_tx_bytes: u64,
+    pub load_average_1m: f64,
+    pub load_average_5m: f64,
+    pub load_average_15m: f64,
+    pub uptime_seconds: u64,
+    pub timestamp: DateTime<Utc>,
+}
+
+impl From<SystemMetrics> for FlatSystemMetrics {
+    fn from(metrics: SystemMetrics) -> Self {
+        FlatSystemMetrics {
+            cpu_usage: metrics.cpu.usage_percent,
+            memory_total: metrics.memory.total_mb * 1024 * 1024, // Convert to bytes
+            memory_used: metrics.memory.used_mb * 1024 * 1024,
+            memory_available: metrics.memory.available_mb * 1024 * 1024,
+            disk_total: metrics.disk.first().map(|d| d.total_gb * 1024 * 1024 * 1024).unwrap_or(0),
+            disk_used: metrics.disk.first().map(|d| d.used_gb * 1024 * 1024 * 1024).unwrap_or(0),
+            disk_available: metrics.disk.first().map(|d| d.available_gb * 1024 * 1024 * 1024).unwrap_or(0),
+            network_rx_bytes: metrics.network.first().map(|n| n.rx_bytes).unwrap_or(0),
+            network_tx_bytes: metrics.network.first().map(|n| n.tx_bytes).unwrap_or(0),
+            load_average_1m: metrics.load_average.one_minute,
+            load_average_5m: metrics.load_average.five_minutes,
+            load_average_15m: metrics.load_average.fifteen_minutes,
+            uptime_seconds: metrics.uptime,
+            timestamp: metrics.timestamp,
+        }
+    }
 }
 
 impl MonitoringManager {
@@ -535,6 +583,11 @@ impl MonitoringManager {
                 enabled,
                 memory_usage_mb,
                 cpu_usage_percent,
+                // Additional fields for compatibility
+                memory_usage: memory_usage_mb,
+                cpu_usage: cpu_usage_percent,
+                pid: None, // TODO: Get actual PID from systemctl
+                timestamp: Utc::now(),
             });
         }
 
@@ -626,5 +679,57 @@ impl MonitoringManager {
         // Convert database rows back to SystemMetrics
         // This is simplified - you'd need to store and retrieve all metric components
         Ok(vec![]) // Placeholder
+    }
+
+    // Alias method for compatibility
+    pub async fn get_service_statuses(&self, services: &[&str]) -> Result<Vec<ServiceStatus>> {
+        self.get_service_status(services).await
+    }
+
+    // Get process list
+    pub async fn get_process_list(&self) -> Result<Vec<ProcessInfo>> {
+        let output = Command::new("ps")
+            .args(&["aux", "--sort=-pcpu"])
+            .output()?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let mut processes = Vec::new();
+
+        for line in output_str.lines().skip(1).take(10) { // Top 10 processes
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() >= 11 {
+                if let (Ok(pid), Ok(cpu), Ok(mem)) = (
+                    fields[1].parse::<u32>(),
+                    fields[2].parse::<f64>(),
+                    fields[3].parse::<f64>(),
+                ) {
+                    processes.push(ProcessInfo {
+                        pid,
+                        name: fields[10].to_string(),
+                        cpu_percent: cpu,
+                        memory_mb: (mem * 1024.0) as u64, // Simplified conversion
+                        user: fields[0].to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(processes)
+    }
+
+    // Get disk usage breakdown
+    pub async fn get_disk_usage(&self) -> Result<Vec<DiskMetrics>> {
+        self.collect_disk_metrics().await
+    }
+
+    // Get network statistics
+    pub async fn get_network_stats(&self) -> Result<Vec<NetworkMetrics>> {
+        self.collect_network_metrics().await
+    }
+
+    // Collect metrics in flat format for handlers
+    pub async fn collect_flat_metrics(&self) -> Result<FlatSystemMetrics> {
+        let metrics = self.collect_metrics().await?;
+        Ok(metrics.into())
     }
 }

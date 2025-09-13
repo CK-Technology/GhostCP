@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, mysql::MySqlPool, postgres::PgPool};
+use sqlx::{Row, postgres::PgPool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseManager {

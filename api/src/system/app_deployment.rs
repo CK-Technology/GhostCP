@@ -767,7 +767,7 @@ networks:
         for (key, value) in &template.configuration.environment_variables {
             let resolved_value = match value {
                 ConfigValue::Static(v) => v.clone(),
-                ConfigValue::Generated(gen) => match gen {
+                ConfigValue::Generated(gen_value) => match gen_value {
                     GeneratedValue::RandomPassword(len) => self.generate_random_string(*len as usize),
                     GeneratedValue::DatabaseUrl => {
                         if let Some(db) = &request.database_config {
