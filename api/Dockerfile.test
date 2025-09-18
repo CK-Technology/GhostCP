@@ -1,0 +1,28 @@
+FROM rust:1.75-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    postgresql-client \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cargo tools for testing
+RUN cargo install cargo-nextest
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY api ./api
+COPY ui ./ui
+
+# Build dependencies (cached layer)
+RUN cd api && cargo build --release
+
+# Expose port for integration tests
+EXPOSE 8080
+
+# Default test command
+CMD ["cargo", "nextest", "run", "--workspace"]

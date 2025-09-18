@@ -424,6 +424,163 @@ smtp tcp://0.0.0.0:25 {{
         Ok(())
     }
 
+    // Test mail configuration
+    pub async fn test_mail_config(&self) -> Result<()> {
+        match self.config.mail_server {
+            MailServerType::Stalwart => {
+                let output = Command::new("stalwart-mail")
+                    .args(&["--config", &self.config.config_dir.join("stalwart.toml").to_string_lossy(), "--test"])
+                    .output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Stalwart config test failed: {}",
+                        String::from_utf8_lossy(&output.stderr)));
+                }
+            },
+            MailServerType::Maddy => {
+                let output = Command::new("maddy")
+                    .args(&["-config", &self.config.config_dir.join("maddy.conf").to_string_lossy(), "-test"])
+                    .output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Maddy config test failed: {}",
+                        String::from_utf8_lossy(&output.stderr)));
+                }
+            },
+            MailServerType::Postfix => {
+                let output = Command::new("postfix")
+                    .arg("check")
+                    .output()?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Postfix config test failed: {}",
+                        String::from_utf8_lossy(&output.stderr)));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // Get mail server status
+    pub async fn get_mail_status(&self) -> Result<MailServerStatus> {
+        let service_name = match self.config.mail_server {
+            MailServerType::Stalwart => "stalwart",
+            MailServerType::Maddy => "maddy",
+            MailServerType::Postfix => "postfix",
+        };
+
+        let output = Command::new("systemctl")
+            .args(&["is-active", service_name])
+            .output()?;
+
+        let is_running = output.status.success() &&
+            String::from_utf8_lossy(&output.stdout).trim() == "active";
+
+        let queue_size = self.get_queue_size().await?;
+
+        Ok(MailServerStatus {
+            service_name: service_name.to_string(),
+            is_running,
+            queue_size,
+            last_check: chrono::Utc::now(),
+        })
+    }
+
+    async fn get_queue_size(&self) -> Result<u32> {
+        match self.config.mail_server {
+            MailServerType::Stalwart => {
+                // Query Stalwart API for queue size
+                let client = reqwest::Client::new();
+                let response = client
+                    .get("http://localhost:8080/api/v1/queue/size")
+                    .send()
+                    .await?;
+
+                if response.status().is_success() {
+                    let queue_info: serde_json::Value = response.json().await?;
+                    Ok(queue_info["size"].as_u64().unwrap_or(0) as u32)
+                } else {
+                    Ok(0)
+                }
+            },
+            MailServerType::Maddy => {
+                let output = Command::new("maddyctl")
+                    .args(&["queue", "list"])
+                    .output()?;
+
+                if output.status.success() {
+                    let queue_output = String::from_utf8_lossy(&output.stdout);
+                    Ok(queue_output.lines().count() as u32)
+                } else {
+                    Ok(0)
+                }
+            },
+            MailServerType::Postfix => {
+                let output = Command::new("mailq")
+                    .output()?;
+
+                if output.status.success() {
+                    let queue_output = String::from_utf8_lossy(&output.stdout);
+                    if queue_output.contains("Mail queue is empty") {
+                        Ok(0)
+                    } else {
+                        // Count lines that look like queue entries
+                        Ok(queue_output.lines()
+                            .filter(|line| line.chars().next().map_or(false, |c| c.is_ascii_alphanumeric()))
+                            .count() as u32)
+                    }
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+    }
+
+    // Configure mail forwarding and relay rules
+    pub async fn configure_smtp_relay(&self, relay_config: &SmtpRelayConfig) -> Result<()> {
+        match self.config.mail_server {
+            MailServerType::Stalwart => {
+                self.configure_stalwart_relay(relay_config).await
+            },
+            MailServerType::Maddy => {
+                let relay_config_content = format!(r#"
+# SMTP relay configuration for Maddy
+outbound_delivery {{
+    destination $(local_domains) {{
+        deliver_to &local_routing
+    }}
+
+    default_destination {{
+        deliver_to &smtp_relay
+    }}
+}}
+
+smtp_relay smtp tcp://{}:{} {{
+    auth plain "{}" "{}"
+    tls {}
+}}
+"#, relay_config.host, relay_config.port, relay_config.username,
+     relay_config.password, if relay_config.use_tls { "yes" } else { "no" });
+
+                let config_path = self.config.config_dir.join("relay.conf");
+                fs::write(config_path, relay_config_content).await?;
+                Ok(())
+            },
+            MailServerType::Postfix => {
+                // Configure Postfix relay maps
+                let relay_maps = format!("{}:{}\n", relay_config.host, relay_config.port);
+                fs::write("/etc/postfix/relay_maps", relay_maps).await?;
+
+                Command::new("postmap")
+                    .arg("/etc/postfix/relay_maps")
+                    .output()?;
+
+                Ok(())
+            }
+        }
+    }
+
     // Get DNS records for mail domain
     pub fn get_dns_records(&self, domain: &MailDomain) -> Vec<DnsRecordConfig> {
         vec![
@@ -478,4 +635,114 @@ pub struct DnsRecordConfig {
     pub name: String,
     pub content: String,
     pub ttl: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailServerStatus {
+    pub service_name: String,
+    pub is_running: bool,
+    pub queue_size: u32,
+    pub last_check: chrono::DateTime<chrono::Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_mail_config_serialization() {
+        let config = MailConfig {
+            mail_server: MailServerType::Stalwart,
+            data_dir: PathBuf::from("/var/lib/ghostcp/mail"),
+            config_dir: PathBuf::from("/etc/ghostcp/mail"),
+            smtp_relay: Some(SmtpRelayConfig::default()),
+            dkim_enabled: true,
+            dmarc_enabled: true,
+            spf_enabled: true,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: MailConfig = serde_json::from_str(&json).unwrap();
+
+        assert!(matches!(deserialized.mail_server, MailServerType::Stalwart));
+        assert!(deserialized.dkim_enabled);
+    }
+
+    #[test]
+    fn test_mail_domain_creation() {
+        let domain = MailDomain {
+            id: Uuid::new_v4(),
+            domain: "example.com".to_string(),
+            dkim_selector: "mail202409".to_string(),
+            dkim_private_key: "private_key".to_string(),
+            dkim_public_key: "public_key".to_string(),
+            spf_record: "v=spf1 mx a include:spf.smtp2go.com ~all".to_string(),
+            dmarc_record: "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com".to_string(),
+            mx_records: vec![
+                MxRecord { priority: 10, hostname: "mail.example.com".to_string() },
+            ],
+            catch_all: None,
+        };
+
+        assert_eq!(domain.domain, "example.com");
+        assert_eq!(domain.dkim_selector, "mail202409");
+        assert_eq!(domain.mx_records.len(), 1);
+    }
+
+    #[test]
+    fn test_mail_account_creation() {
+        let account = MailAccount {
+            id: Uuid::new_v4(),
+            email: "user@example.com".to_string(),
+            username: "user".to_string(),
+            domain: "example.com".to_string(),
+            quota_mb: 1024,
+            aliases: vec!["alias@example.com".to_string()],
+            forward_to: None,
+            autoresponder: None,
+        };
+
+        assert_eq!(account.email, "user@example.com");
+        assert_eq!(account.username, "user");
+        assert_eq!(account.domain, "example.com");
+        assert_eq!(account.quota_mb, 1024);
+    }
+
+    #[test]
+    fn test_dns_record_generation() {
+        let domain = MailDomain {
+            id: Uuid::new_v4(),
+            domain: "test.com".to_string(),
+            dkim_selector: "default".to_string(),
+            dkim_private_key: "private".to_string(),
+            dkim_public_key: "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...".to_string(),
+            spf_record: "v=spf1 mx a ~all".to_string(),
+            dmarc_record: "v=DMARC1; p=none".to_string(),
+            mx_records: vec![],
+            catch_all: None,
+        };
+
+        let config = MailConfig {
+            mail_server: MailServerType::Stalwart,
+            data_dir: PathBuf::from("/tmp"),
+            config_dir: PathBuf::from("/tmp"),
+            smtp_relay: None,
+            dkim_enabled: true,
+            dmarc_enabled: true,
+            spf_enabled: true,
+        };
+
+        let manager = MailManager::new(config);
+        let dns_records = manager.get_dns_records(&domain);
+
+        assert!(dns_records.len() >= 5); // MX, SPF, DKIM, DMARC, A record
+
+        let dkim_record = dns_records.iter()
+            .find(|r| r.name.contains("_domainkey"))
+            .expect("DKIM record should exist");
+
+        assert_eq!(dkim_record.record_type, "TXT");
+        assert!(dkim_record.content.starts_with("v=DKIM1"));
+    }
 }

@@ -433,12 +433,246 @@ impl BackupManager {
         let mut crontab = String::from_utf8_lossy(&output.stdout).to_string();
         crontab.push_str(&format!("\n{}\n", cron_line));
 
-        Command::new("crontab")
+        let mut child = Command::new("crontab")
             .arg("-")
-            .arg(&crontab)
-            .output()?;
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+
+        if let Some(stdin) = child.stdin.take() {
+            use std::io::Write;
+            let mut stdin = stdin;
+            stdin.write_all(crontab.as_bytes())?;
+        }
+
+        child.wait()?;
 
         Ok(())
+    }
+
+    // Check backup repository integrity
+    pub async fn check_repository(&self, config: &BackupConfig) -> Result<BackupHealthStatus> {
+        let repo_url = self.get_repository_url(&config.backend)?;
+
+        let output = Command::new(&self.restic_path)
+            .env("RESTIC_PASSWORD", &config.encryption_password)
+            .args(&["check", "--repo", &repo_url])
+            .output()?;
+
+        let is_healthy = output.status.success();
+        let errors = if is_healthy {
+            vec![]
+        } else {
+            vec![String::from_utf8_lossy(&output.stderr).to_string()]
+        };
+
+        Ok(BackupHealthStatus {
+            is_healthy,
+            errors,
+            last_check: Utc::now(),
+        })
+    }
+
+    // Get backup statistics
+    pub async fn get_backup_stats(&self, config: &BackupConfig) -> Result<BackupStats> {
+        let repo_url = self.get_repository_url(&config.backend)?;
+
+        let output = Command::new(&self.restic_path)
+            .env("RESTIC_PASSWORD", &config.encryption_password)
+            .args(&["stats", "--repo", &repo_url, "--json"])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow!("Failed to get backup stats"));
+        }
+
+        let stats: BackupStats = serde_json::from_slice(&output.stdout)?;
+        Ok(stats)
+    }
+
+    // Test backup configuration
+    pub async fn test_config(&self, config: &BackupConfig) -> Result<ConfigTestResult> {
+        let mut results = ConfigTestResult {
+            repository_accessible: false,
+            authentication_valid: false,
+            write_permissions: false,
+            errors: vec![],
+        };
+
+        // Test repository access
+        let repo_url = match self.get_repository_url(&config.backend) {
+            Ok(url) => {
+                results.repository_accessible = true;
+                url
+            }
+            Err(e) => {
+                results.errors.push(format!("Repository URL error: {}", e));
+                return Ok(results);
+            }
+        };
+
+        // Test authentication by listing snapshots
+        let output = Command::new(&self.restic_path)
+            .env("RESTIC_PASSWORD", &config.encryption_password)
+            .args(&["snapshots", "--repo", &repo_url, "--json"])
+            .output();
+
+        match output {
+            Ok(output) if output.status.success() => {
+                results.authentication_valid = true;
+                results.write_permissions = true; // If we can list, we likely can write
+            }
+            Ok(output) => {
+                let error = String::from_utf8_lossy(&output.stderr);
+                results.errors.push(format!("Authentication failed: {}", error));
+            }
+            Err(e) => {
+                results.errors.push(format!("Command execution failed: {}", e));
+            }
+        }
+
+        Ok(results)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupHealthStatus {
+    pub is_healthy: bool,
+    pub errors: Vec<String>,
+    pub last_check: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupStats {
+    pub total_size: u64,
+    pub total_file_count: u64,
+    pub snapshots_count: u32,
+    pub repository_size: u64,
+    pub deduplicated_size: u64,
+    pub compression_ratio: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigTestResult {
+    pub repository_accessible: bool,
+    pub authentication_valid: bool,
+    pub write_permissions: bool,
+    pub errors: Vec<String>,
+}
+
+impl Default for BackupManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backup_config_serialization() {
+        let config = BackupConfig {
+            backend: BackupBackend::S3 {
+                endpoint: "s3.amazonaws.com".to_string(),
+                bucket: "my-backups".to_string(),
+                access_key: "AKIA123".to_string(),
+                secret_key: "secret".to_string(),
+                region: "us-east-1".to_string(),
+            },
+            encryption_password: "password123".to_string(),
+            retention: RetentionPolicy {
+                hourly: Some(24),
+                daily: Some(7),
+                weekly: Some(4),
+                monthly: Some(12),
+                yearly: Some(2),
+            },
+            schedule: BackupSchedule::Daily { hour: 2 },
+            excludes: vec!["*.tmp".to_string(), "*.log".to_string()],
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: BackupConfig = serde_json::from_str(&json).unwrap();
+
+        assert!(matches!(deserialized.backend, BackupBackend::S3 { .. }));
+        assert_eq!(deserialized.encryption_password, "password123");
+        assert!(matches!(deserialized.schedule, BackupSchedule::Daily { hour: 2 }));
+    }
+
+    #[test]
+    fn test_repository_url_generation() {
+        let manager = BackupManager::new();
+
+        // Test S3 backend
+        let s3_backend = BackupBackend::S3 {
+            endpoint: "s3.amazonaws.com".to_string(),
+            bucket: "my-bucket".to_string(),
+            access_key: "key".to_string(),
+            secret_key: "secret".to_string(),
+            region: "us-east-1".to_string(),
+        };
+
+        let url = manager.get_repository_url(&s3_backend).unwrap();
+        assert_eq!(url, "s3:s3.amazonaws.com/my-bucket");
+
+        // Test local backend
+        let local_backend = BackupBackend::Local {
+            path: PathBuf::from("/backups/repo"),
+        };
+
+        let url = manager.get_repository_url(&local_backend).unwrap();
+        assert_eq!(url, "/backups/repo");
+
+        // Test SFTP backend
+        let sftp_backend = BackupBackend::SFTP {
+            host: "backup.example.com".to_string(),
+            port: 22,
+            username: "backups".to_string(),
+            password: Some("pass".to_string()),
+            key_path: None,
+            path: "/backups".to_string(),
+        };
+
+        let url = manager.get_repository_url(&sftp_backend).unwrap();
+        assert_eq!(url, "sftp:backups@backup.example.com:22/backups");
+    }
+
+    #[test]
+    fn test_backup_job_creation() {
+        let job = BackupJob {
+            id: Uuid::new_v4(),
+            name: "Daily Website Backup".to_string(),
+            backup_type: BackupType::Website {
+                domain: "example.com".to_string(),
+            },
+            source_paths: vec![
+                PathBuf::from("/var/www/html/example.com"),
+                PathBuf::from("/etc/nginx/sites-available/example.com"),
+            ],
+            config: BackupConfig {
+                backend: BackupBackend::Local {
+                    path: PathBuf::from("/backups"),
+                },
+                encryption_password: "secret".to_string(),
+                retention: RetentionPolicy {
+                    hourly: None,
+                    daily: Some(7),
+                    weekly: Some(4),
+                    monthly: Some(6),
+                    yearly: Some(1),
+                },
+                schedule: BackupSchedule::Daily { hour: 3 },
+                excludes: vec!["*.log".to_string()],
+            },
+            last_run: None,
+            next_run: None,
+            status: BackupStatus::Pending,
+        };
+
+        assert_eq!(job.name, "Daily Website Backup");
+        assert!(matches!(job.backup_type, BackupType::Website { .. }));
+        assert_eq!(job.source_paths.len(), 2);
+        assert!(matches!(job.status, BackupStatus::Pending));
     }
 }
 

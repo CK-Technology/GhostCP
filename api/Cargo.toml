@@ -41,3 +41,7 @@ md5 = "0.7"
 lettre = "0.11"
 validator = { version = "0.16", features = ["derive"] }
 trust-dns-resolver = "0.23"
+
+[dev-dependencies]
+axum-test = "14.0"
+tokio-test = "0.4"

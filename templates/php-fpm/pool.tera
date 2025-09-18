@@ -1,0 +1,95 @@
+; PHP-FPM Pool Configuration for {{ config.pool_name }}
+; Generated on {{ timestamp }}
+; GhostCP PHP-FPM Template
+
+[{{ config.pool_name }}]
+
+; Pool settings
+user = {{ config.user }}
+group = {{ config.group }}
+listen = {{ config.listen }}
+
+; Process management
+pm = {{ config.pm }}
+pm.max_children = {{ config.pm_max_children }}
+{% if config.pm == "dynamic" or config.pm == "ondemand" %}
+pm.start_servers = {{ config.pm_start_servers }}
+pm.min_spare_servers = {{ config.pm_min_spare_servers }}
+pm.max_spare_servers = {{ config.pm_max_spare_servers }}
+{% endif %}
+pm.max_requests = {{ config.pm_max_requests }}
+
+; Process priority (nice)
+;process.priority = -19
+
+; Set session path to a directory owned by process user
+php_admin_value[session.save_handler] = files
+php_admin_value[session.save_path]    = /var/lib/php/sessions
+
+; Set upload temp directory
+php_admin_value[upload_tmp_dir] = /tmp
+
+; Set max execution time
+php_admin_value[max_execution_time] = 300
+
+; Security settings
+php_admin_flag[allow_url_fopen] = off
+php_admin_flag[allow_url_include] = off
+
+; Logging
+php_admin_value[error_log] = /var/log/php/{{ config.pool_name }}.error.log
+php_admin_flag[log_errors] = on
+
+; Environment variables
+env[HOSTNAME] = $HOSTNAME
+env[PATH] = /usr/local/bin:/usr/bin:/bin
+env[TMP] = /tmp
+env[TMPDIR] = /tmp
+env[TEMP] = /tmp
+
+; Chroot and security
+{% if config.chroot %}
+chroot = {{ config.chroot }}
+{% endif %}
+
+{% if config.chdir %}
+chdir = {{ config.chdir }}
+{% endif %}
+
+; Catch worker output
+catch_workers_output = {{ config.catch_workers_output | lower }}
+
+; Custom PHP admin values
+{% for key, value in config.php_admin_values %}
+php_admin_value[{{ key }}] = {{ value }}
+{% endfor %}
+
+; Custom PHP values
+{% for key, value in config.php_values %}
+php_value[{{ key }}] = {{ value }}
+{% endfor %}
+
+; Pool-specific configurations based on pool name patterns
+{% if config.pool_name contains "wordpress" or config.pool_name contains "wp" %}
+; WordPress optimizations
+php_admin_value[memory_limit] = 256M
+php_admin_value[max_input_vars] = 3000
+php_admin_value[post_max_size] = 32M
+php_admin_value[upload_max_filesize] = 32M
+php_admin_flag[file_uploads] = on
+{% endif %}
+
+{% if config.pool_name contains "drupal" %}
+; Drupal optimizations
+php_admin_value[memory_limit] = 512M
+php_admin_value[max_input_vars] = 5000
+php_admin_flag[opcache.enable] = on
+{% endif %}
+
+; Security hardening
+php_admin_flag[expose_php] = off
+php_admin_flag[display_errors] = off
+php_admin_flag[display_startup_errors] = off
+
+; Disable dangerous functions
+php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source

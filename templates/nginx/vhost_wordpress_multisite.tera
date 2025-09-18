@@ -1,0 +1,81 @@
+# WordPress Multisite Virtual Host Configuration for {{ config.domain }}
+# Generated on {{ timestamp }}
+# GhostCP NGINX Template
+
+{% if config.rate_limiting %}
+limit_req_zone $binary_remote_addr zone={{ config.rate_limiting.zone_name }}:10m rate={{ config.rate_limiting.requests_per_second }}r/s;
+{% endif %}
+
+# WordPress Multisite map
+map $http_host $blogid {
+    default       -999;
+    #Ref: http://wordpress.org/extend/plugins/nginx-helper/
+    #include /var/www/{{ config.domain }}/wp-content/plugins/nginx-helper/map.conf;
+}
+
+# HTTP Server Block
+server {
+    listen {{ config.ip_address }}:80;
+    {% if config.ipv6_address %}
+    listen [{{ config.ipv6_address }}]:80;
+    {% endif %}
+
+    server_name {{ config.domain }}{% for alias in config.aliases %} {{ alias }}{% endfor %};
+
+    {% if config.ssl_enabled and config.ssl_force %}
+    # Force HTTPS redirect
+    location / {
+        return 301 https://$host$request_uri;
+    }
+
+    # ACME challenge location
+    location /.well-known/acme-challenge/ {
+        root {{ config.document_root }};
+        try_files $uri =404;
+    }
+    {% else %}
+    # WordPress Multisite HTTP configuration
+    {% include "wordpress_multisite_common.tera" %}
+    {% endif %}
+
+    # Logging
+    access_log {{ config.access_log }};
+    error_log {{ config.error_log }};
+}
+
+{% if config.ssl_enabled %}
+# HTTPS Server Block
+server {
+    listen {{ config.ip_address }}:443 ssl http2;
+    {% if config.ipv6_address %}
+    listen [{{ config.ipv6_address }}]:443 ssl http2;
+    {% endif %}
+
+    server_name {{ config.domain }}{% for alias in config.aliases %} {{ alias }}{% endfor %};
+
+    # SSL Configuration
+    ssl_certificate {{ config.ssl_certificate }};
+    ssl_certificate_key {{ config.ssl_certificate_key }};
+
+    # SSL Security
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    {% if config.ssl_hsts %}
+    # HSTS
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    {% endif %}
+
+    # WordPress Multisite HTTPS configuration
+    {% include "wordpress_multisite_common.tera" %}
+
+    # Logging
+    access_log {{ config.access_log }};
+    error_log {{ config.error_log }};
+}
+{% endif %}

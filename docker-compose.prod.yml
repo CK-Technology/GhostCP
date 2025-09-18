@@ -1,0 +1,317 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-ghostcp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-ghostcp}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - ghostcp-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ghostcp}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - ghostcp-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # GhostCP API
+  ghostcp-api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile.prod
+      args:
+        - BUILD_ENV=production
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-ghostcp}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-ghostcp}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      RUST_LOG: ${LOG_LEVEL:-info}
+      BIND_ADDRESS: "0.0.0.0:8080"
+      ENVIRONMENT: production
+      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:-https://acme-v02.api.letsencrypt.org/directory}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+    volumes:
+      - ghostcp_data:/var/lib/ghostcp
+      - ssl_certificates:/etc/ghostcp/ssl
+      - nginx_configs:/etc/nginx/sites-available
+      - mail_configs:/etc/ghostcp/mail
+      - backup_configs:/etc/ghostcp/backups
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ghostcp-internal
+      - ghostcp-external
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # GhostCP UI (Leptos SSR)
+  ghostcp-ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile.prod
+      args:
+        - BUILD_ENV=production
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://ghostcp-api:8080
+      RUST_LOG: ${LOG_LEVEL:-info}
+    networks:
+      - ghostcp-internal
+      - ghostcp-external
+    depends_on:
+      ghostcp-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # NGINX Reverse Proxy
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2083:2083"  # GhostCP Admin Panel
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_configs:/etc/nginx/sites-available:ro
+      - ssl_certificates:/etc/nginx/ssl:ro
+      - ./config/nginx/snippets:/etc/nginx/snippets:ro
+      - nginx_logs:/var/log/nginx
+      - acme_challenges:/var/www/.well-known/acme-challenge
+    networks:
+      - ghostcp-external
+    depends_on:
+      - ghostcp-ui
+      - ghostcp-api
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # Mail Server (Stalwart)
+  stalwart-mail:
+    image: stalwartlabs/mail-server:latest
+    restart: unless-stopped
+    ports:
+      - "25:25"     # SMTP
+      - "587:587"   # SMTP Submission
+      - "143:143"   # IMAP
+      - "993:993"   # IMAPS
+      - "110:110"   # POP3
+      - "995:995"   # POP3S
+      - "4190:4190" # ManageSieve
+    volumes:
+      - stalwart_data:/opt/stalwart-mail/data
+      - mail_configs:/opt/stalwart-mail/etc
+      - ssl_certificates:/opt/stalwart-mail/certs:ro
+    networks:
+      - ghostcp-internal
+      - ghostcp-external
+    environment:
+      STALWART_CONFIG: /opt/stalwart-mail/etc/config.toml
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "15m"
+        max-file: "3"
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - ghostcp-internal
+    expose:
+      - "9090"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: false
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - ghostcp-internal
+    expose:
+      - "3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Log Management - Loki
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./config/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - ghostcp-internal
+    expose:
+      - "3100"
+
+  # Log Collection - Promtail
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    volumes:
+      - ./config/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - ghostcp-internal
+    depends_on:
+      - loki
+
+  # Backup Job Runner
+  backup-runner:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.backup
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-ghostcp}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-ghostcp}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+      AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${BACKUP_AWS_REGION:-us-east-1}
+    volumes:
+      - ghostcp_data:/var/lib/ghostcp:ro
+      - backup_configs:/etc/ghostcp/backups:ro
+      - /var/lib/docker/volumes:/backup-source/docker-volumes:ro
+    networks:
+      - ghostcp-internal
+    depends_on:
+      - postgres
+      - ghostcp-api
+
+networks:
+  ghostcp-internal:
+    driver: bridge
+    internal: true
+  ghostcp-external:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  ghostcp_data:
+    driver: local
+  ssl_certificates:
+    driver: local
+  nginx_configs:
+    driver: local
+  nginx_logs:
+    driver: local
+  mail_configs:
+    driver: local
+  stalwart_data:
+    driver: local
+  backup_configs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  acme_challenges:
+    driver: local

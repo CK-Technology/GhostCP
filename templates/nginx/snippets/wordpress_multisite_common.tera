@@ -1,0 +1,109 @@
+# WordPress Multisite Common Configuration
+# To be included by both HTTP and HTTPS server blocks
+
+# Document root and index
+root {{ config.document_root }};
+index index.php;
+
+{% if config.rate_limiting %}
+limit_req zone={{ config.rate_limiting.zone_name }} burst={{ config.rate_limiting.burst }} nodelay;
+{% endif %}
+
+# Security headers
+{% if config.security_headers %}
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+{% endif %}
+
+# WordPress multisite rules
+if (!-e $request_filename) {
+    rewrite /wp-admin$ $scheme://$host$uri/ permanent;
+    {% if config.wp_subdirectory %}
+    # Subdirectory multisite
+    rewrite ^/[_0-9a-zA-Z-]+(/wp-.*) $1 last;
+    rewrite ^/[_0-9a-zA-Z-]+(/.*\.php)$ $1 last;
+    {% else %}
+    # Subdomain multisite
+    rewrite ^(/[^/]+)?(/wp-.*) $2 last;
+    rewrite ^(/[^/]+)?(/.*\.php)$ $2 last;
+    {% endif %}
+}
+
+# Deny access to any files with a .php extension in the uploads directory
+location ~* /(?:uploads|files)/.*\.php$ {
+    deny all;
+}
+
+# WordPress common rules
+location / {
+    try_files $uri $uri/ /index.php?$args;
+}
+
+# Add trailing slash to */wp-admin requests
+rewrite /wp-admin$ $scheme://$host$uri/ permanent;
+
+# PHP handling for WordPress
+location ~ \.php$ {
+    include fastcgi.conf;
+    fastcgi_intercept_errors on;
+    fastcgi_pass unix:/var/run/php/php{{ config.php_version }}-fpm-{{ config.php_pool }}.sock;
+
+    # Set HTTPS for SSL
+    {% if config.ssl_enabled %}
+    fastcgi_param HTTPS on;
+    {% endif %}
+
+    # Security
+    fastcgi_param HTTP_PROXY "";
+    fastcgi_hide_header X-Powered-By;
+}
+
+# Handle static files
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    {% if config.gzip_enabled %}
+    gzip_static on;
+    {% endif %}
+}
+
+# WordPress-specific security rules
+location ~* /(?:uploads|files|wp-content|wp-includes|wp-admin)/.*\.php$ {
+    deny all;
+}
+
+location ~ /\.ht {
+    deny all;
+}
+
+location ~ /\.user\.ini {
+    deny all;
+}
+
+location ~* /wp-config\.php {
+    deny all;
+}
+
+location ~* /(wp-content)/(.*?)\.(zip|gz|tar|bzip2|7z)\$ {
+    deny all;
+}
+
+# WordPress caching rules
+location ~* \.(ogg|ogv|svg|svgz|eot|otf|woff|mp4|ttf|css|rss|atom|js|jpg|jpeg|gif|png|ico|zip|tgz|gz|rar|bz2|doc|xls|exe|ppt|tar|mid|midi|wav|bmp|rtf)$ {
+    expires max;
+    log_not_found off;
+    access_log off;
+}
+
+# Basic auth
+{% if config.basic_auth %}
+auth_basic "{{ config.basic_auth.realm }}";
+auth_basic_user_file {{ config.basic_auth.auth_file }};
+{% endif %}
+
+# Custom configuration
+{% if config.custom_config %}
+{{ config.custom_config }}
+{% endif %}
