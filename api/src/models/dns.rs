@@ -42,6 +42,9 @@ pub struct DnsRecord {
     
     // Record data
     pub name: String,
+    // DB column is the reserved word `type`; expose it as `record_type` in Rust
+    // and JSON (matching the UI contract) while mapping back to `type` for sqlx.
+    #[sqlx(rename = "type")]
     pub record_type: String, // A, AAAA, CNAME, MX, TXT, NS, SRV, CAA, PTR
     pub value: String,
     pub ttl: i32,

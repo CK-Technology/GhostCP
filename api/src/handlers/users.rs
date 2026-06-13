@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 use uuid::Uuid;
 
 use crate::{
@@ -33,41 +32,54 @@ pub async fn list_users(
     State(state): State<AppState>,
     Query(params): Query<ListUsersQuery>,
 ) -> ApiResult<Json<ListUsersResponse>> {
-    let page = params.page.unwrap_or(1);
-    let limit = params.limit.unwrap_or(20).min(100); // Max 100 per page
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(20).clamp(1, 100); // Max 100 per page
     let offset = (page - 1) * limit;
 
-    // Build query with filters
-    let mut query = "SELECT * FROM users WHERE 1=1".to_string();
-    let mut count_query = "SELECT COUNT(*) FROM users WHERE 1=1".to_string();
-    
-    if let Some(role) = &params.role {
-        let role_filter = format!(" AND role = '{}'", role);
-        query.push_str(&role_filter);
-        count_query.push_str(&role_filter);
+    // Build the filter clause with positional placeholders so all user input is
+    // passed as bound parameters, never interpolated into the SQL string.
+    let mut filter = String::new();
+    let mut bind_idx = 1;
+    let role_value = params.role.as_ref().map(|r| r.to_string());
+    if role_value.is_some() {
+        filter.push_str(&format!(" AND role = ${}", bind_idx));
+        bind_idx += 1;
     }
-    
-    if let Some(search) = &params.search {
-        let search_filter = format!(
-            " AND (username ILIKE '%{}%' OR email ILIKE '%{}%' OR full_name ILIKE '%{}%')",
-            search, search, search
-        );
-        query.push_str(&search_filter);
-        count_query.push_str(&search_filter);
+    // `search` is wrapped in `%...%` here (not in SQL) so ILIKE still treats it
+    // as a literal substring once bound.
+    let search_value = params.search.as_ref().map(|s| format!("%{}%", s));
+    if search_value.is_some() {
+        filter.push_str(&format!(
+            " AND (username ILIKE ${0} OR email ILIKE ${0} OR full_name ILIKE ${0})",
+            bind_idx
+        ));
+        bind_idx += 1;
     }
-    
-    query.push_str(&format!(" ORDER BY created_at DESC LIMIT {} OFFSET {}", limit, offset));
 
-    // Get total count
-    let total_row = sqlx::query(&count_query)
-        .fetch_one(&state.db)
-        .await?;
-    let total: i64 = total_row.get(0);
-    
-    // Get users
-    let users = sqlx::query_as::<_, User>(&query)
-        .fetch_all(&state.db)
-        .await?;
+    let count_sql = format!("SELECT COUNT(*) FROM users WHERE 1=1{}", filter);
+    let list_sql = format!(
+        "SELECT * FROM users WHERE 1=1{} ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+        filter,
+        bind_idx,
+        bind_idx + 1
+    );
+
+    // Bind the filter parameters in the same order they appear in both queries.
+    let mut count_q = sqlx::query_scalar::<_, i64>(&count_sql);
+    let mut list_q = sqlx::query_as::<_, User>(&list_sql);
+    if let Some(role) = &role_value {
+        count_q = count_q.bind(role);
+        list_q = list_q.bind(role);
+    }
+    if let Some(search) = &search_value {
+        count_q = count_q.bind(search);
+        list_q = list_q.bind(search);
+    }
+    // LIMIT/OFFSET only appear in the list query.
+    list_q = list_q.bind(limit as i64).bind(offset as i64);
+
+    let total: i64 = count_q.fetch_one(&state.db).await?;
+    let users = list_q.fetch_all(&state.db).await?;
 
     let total_pages = ((total as f64) / (limit as f64)).ceil() as u32;
 

@@ -1,9 +1,3 @@
-// Much of the `system/` and `drivers/` infrastructure is implemented ahead of
-// the HTTP route wiring, so a fair amount of it is not yet referenced from the
-// binary entry points. Allow dead code at the crate root until those layers are
-// fully connected, rather than deleting functionality that is intentionally staged.
-#![allow(dead_code)]
-
 use axum::{
     response::Json,
     routing::{get, post},
@@ -21,11 +15,20 @@ pub mod database;
 pub mod models;
 pub mod handlers;
 pub mod auth;
-pub mod templates;
 pub mod jobs;
-pub mod drivers;
-pub mod system;
 pub mod middleware;
+
+// The integration layers below are staged ahead of full HTTP route wiring:
+// driver response structs mirror upstream API shapes and several config fields
+// are reserved for issuance/templating logic that is still being connected.
+// Scope the dead-code allowance to these modules so the rest of the crate
+// (handlers, models, auth, jobs) still gets real dead-code checking.
+#[allow(dead_code)]
+pub mod templates;
+#[allow(dead_code)]
+pub mod drivers;
+#[allow(dead_code)]
+pub mod system;
 
 use config::Config;
 use drivers::dns::{DnsProvider, cloudflare::CloudflareDns, powerdns::PowerDns, local::LocalDns};

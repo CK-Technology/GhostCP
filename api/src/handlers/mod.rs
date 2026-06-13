@@ -60,3 +60,12 @@ impl From<sqlx::Error> for ApiError {
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;
+
+/// Resolve the authenticated user's UUID from validated JWT claims.
+///
+/// The auth middleware decodes the bearer token and inserts `Claims` into the
+/// request extensions; `Claims` implements `FromRequestParts`, so protected
+/// handlers can take it directly and call this to scope queries to the owner.
+pub fn claims_user_id(claims: &auth::Claims) -> ApiResult<uuid::Uuid> {
+    uuid::Uuid::parse_str(&claims.sub).map_err(|_| ApiError::Unauthorized)
+}

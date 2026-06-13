@@ -82,8 +82,21 @@ pub struct RefreshTokenRequest {
     pub token: String,
 }
 
-// JWT secret key - in production, load from environment
-const JWT_SECRET: &[u8] = b"your-secret-key-change-in-production";
+/// Shared JWT signing secret, read once from the `JWT_SECRET` environment
+/// variable (the same source `Config::from_env` uses). Centralizing this here
+/// keeps token signing and verification — including the auth middleware — in
+/// lockstep instead of each site hardcoding its own literal.
+pub(crate) fn jwt_secret() -> &'static [u8] {
+    use std::sync::OnceLock;
+    static SECRET: OnceLock<Vec<u8>> = OnceLock::new();
+    SECRET
+        .get_or_init(|| {
+            std::env::var("JWT_SECRET")
+                .unwrap_or_else(|_| "change-me-in-production".to_string())
+                .into_bytes()
+        })
+        .as_slice()
+}
 
 pub async fn login(
     State(state): State<AppState>,
@@ -155,7 +168,7 @@ pub async fn login(
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET)
+        &EncodingKey::from_secret(jwt_secret())
     ).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Update last login
@@ -251,7 +264,7 @@ pub async fn register(
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET)
+        &EncodingKey::from_secret(jwt_secret())
     ).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let response = LoginResponse {
@@ -273,7 +286,7 @@ pub async fn refresh_token(
     // Decode and validate the existing token
     let token_data = decode::<Claims>(
         &payload.token,
-        &DecodingKey::from_secret(JWT_SECRET),
+        &DecodingKey::from_secret(jwt_secret()),
         &Validation::default()
     ).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
@@ -292,7 +305,7 @@ pub async fn refresh_token(
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(JWT_SECRET)
+        &EncodingKey::from_secret(jwt_secret())
     ).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(serde_json::json!({ "token": token })))
@@ -383,7 +396,7 @@ pub async fn auth_middleware(
 
     let token_data = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(JWT_SECRET),
+        &DecodingKey::from_secret(jwt_secret()),
         &Validation::default()
     ).map_err(|_| StatusCode::UNAUTHORIZED)?;
 

@@ -25,7 +25,7 @@ pub async fn auth_middleware(
 
     let claims = decode::<Claims>(
         &token,
-        &DecodingKey::from_secret(b"your-secret-key-change-in-production"),
+        &DecodingKey::from_secret(crate::handlers::auth::jwt_secret()),
         &Validation::default(),
     )
     .map_err(|_| StatusCode::UNAUTHORIZED)?

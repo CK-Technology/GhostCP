@@ -7,14 +7,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
+    handlers::auth::Claims,
     models::{DnsZone, DnsRecord, CreateDnsZoneRequest, CreateDnsRecordRequest},
     AppState,
 };
-use super::{ApiError, ApiResult};
+use super::{claims_user_id, ApiError, ApiResult};
 
 #[derive(Debug, Deserialize)]
 pub struct ListDnsZonesQuery {
-    pub user_id: Option<Uuid>,
     pub page: Option<u32>,
     pub limit: Option<u32>,
 }
@@ -37,7 +37,7 @@ pub struct DnsZoneWithRecordCount {
     pub provider_zone_id: Option<String>,
     pub primary_ns: String,
     pub admin_email: String,
-    pub serial: i32,
+    pub serial: i64,
     pub refresh_interval: i32,
     pub retry_interval: i32,
     pub expire_interval: i32,
@@ -51,28 +51,33 @@ pub struct DnsZoneWithRecordCount {
 
 pub async fn list_dns_zones(
     State(state): State<AppState>,
+    claims: Claims,
     Query(params): Query<ListDnsZonesQuery>,
 ) -> ApiResult<Json<ListDnsZonesResponse>> {
-    let page = params.page.unwrap_or(1);
-    let limit = params.limit.unwrap_or(20).min(100);
+    let user_id = claims_user_id(&claims)?;
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * limit;
 
-    let mut query = "SELECT z.*, CAST(COUNT(r.id) as BIGINT) as records_count FROM dns_zones z LEFT JOIN dns_records r ON z.id = r.zone_id WHERE 1=1".to_string();
-    
-    if let Some(user_id) = params.user_id {
-        query.push_str(&format!(" AND z.user_id = '{}'", user_id));
-    }
-    
-    query.push_str(" GROUP BY z.id ORDER BY z.created_at DESC");
-    query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+    let zones = sqlx::query_as::<_, DnsZoneWithRecordCount>(
+        r#"
+        SELECT z.*, CAST(COUNT(r.id) AS BIGINT) AS records_count
+        FROM dns_zones z
+        LEFT JOIN dns_records r ON z.id = r.zone_id
+        WHERE z.user_id = $1
+        GROUP BY z.id
+        ORDER BY z.created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit as i64)
+    .bind(offset as i64)
+    .fetch_all(&state.db)
+    .await?;
 
-    let zones = sqlx::query_as::<_, DnsZoneWithRecordCount>(&query)
-        .fetch_all(&state.db)
-        .await?;
-
-    // Get total count
-    let count_query = "SELECT COUNT(*) FROM dns_zones WHERE 1=1".to_string();
-    let total: i64 = sqlx::query_scalar(&count_query)
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dns_zones WHERE user_id = $1")
+        .bind(user_id)
         .fetch_one(&state.db)
         .await?;
 
@@ -86,8 +91,10 @@ pub async fn list_dns_zones(
 
 pub async fn create_dns_zone(
     State(state): State<AppState>,
+    claims: Claims,
     Json(payload): Json<CreateDnsZoneRequest>,
 ) -> ApiResult<Json<DnsZone>> {
+    let user_id = claims_user_id(&claims)?;
     // Validate DNS provider
     let dns_provider = payload.dns_provider.as_deref().unwrap_or("local");
     let provider = state.dns_providers.get(dns_provider)
@@ -122,7 +129,7 @@ pub async fn create_dns_zone(
         ) RETURNING *
         "#,
     )
-    .bind(Uuid::new_v4()) // TODO: Get actual user ID from auth
+    .bind(user_id)
     .bind(&payload.domain)
     .bind(&provider_zone.primary_ns)
     .bind(&provider_zone.admin_email)
@@ -143,30 +150,29 @@ pub async fn create_dns_zone(
 
 pub async fn get_dns_zone(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
 ) -> ApiResult<Json<DnsZone>> {
-    let zone = sqlx::query_as::<_, DnsZone>(
-        "SELECT * FROM dns_zones WHERE id = $1"
-    )
-    .bind(zone_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(ApiError::NotFound)?;
-
+    let user_id = claims_user_id(&claims)?;
+    let zone = ensure_zone_owner(&state, zone_id, user_id).await?;
     Ok(Json(zone))
 }
 
 pub async fn list_dns_records(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
     Query(params): Query<ListDnsRecordsQuery>,
 ) -> ApiResult<Json<ListDnsRecordsResponse>> {
-    let page = params.page.unwrap_or(1);
-    let limit = params.limit.unwrap_or(50).min(200);
+    let user_id = claims_user_id(&claims)?;
+    ensure_zone_owner(&state, zone_id, user_id).await?;
+
+    let page = params.page.unwrap_or(1).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 200);
     let offset = (page - 1) * limit;
 
     let records = sqlx::query_as::<_, DnsRecord>(
-        "SELECT * FROM dns_records WHERE zone_id = $1 ORDER BY name, record_type LIMIT $2 OFFSET $3"
+        r#"SELECT * FROM dns_records WHERE zone_id = $1 ORDER BY name, "type" LIMIT $2 OFFSET $3"#
     )
     .bind(zone_id)
     .bind(limit as i64)
@@ -191,17 +197,13 @@ pub async fn list_dns_records(
 
 pub async fn create_dns_record(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
     Json(payload): Json<CreateDnsRecordRequest>,
 ) -> ApiResult<Json<DnsRecord>> {
-    // Get the zone to determine the DNS provider
-    let zone = sqlx::query_as::<_, DnsZone>(
-        "SELECT * FROM dns_zones WHERE id = $1"
-    )
-    .bind(zone_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(ApiError::NotFound)?;
+    let user_id = claims_user_id(&claims)?;
+    // Get the zone (scoped to the caller) to determine the DNS provider
+    let zone = ensure_zone_owner(&state, zone_id, user_id).await?;
 
     // Get DNS provider
     let provider = state.dns_providers.get(&zone.dns_provider)
@@ -226,7 +228,7 @@ pub async fn create_dns_record(
     let db_record = sqlx::query_as::<_, DnsRecord>(
         r#"
         INSERT INTO dns_records (
-            zone_id, name, record_type, value, ttl, priority
+            zone_id, name, "type", value, ttl, priority
         ) VALUES (
             $1, $2, $3, $4, $5, $6
         ) RETURNING *
@@ -261,16 +263,11 @@ pub struct ListDnsRecordsResponse {
 
 pub async fn sync_dns_zone(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
 ) -> ApiResult<Json<Value>> {
-    // Get the zone
-    let zone = sqlx::query_as::<_, DnsZone>(
-        "SELECT * FROM dns_zones WHERE id = $1"
-    )
-    .bind(zone_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(ApiError::NotFound)?;
+    let user_id = claims_user_id(&claims)?;
+    let zone = ensure_zone_owner(&state, zone_id, user_id).await?;
 
     // Get DNS provider
     let provider = state.dns_providers.get(&zone.dns_provider)
@@ -291,7 +288,7 @@ pub async fn sync_dns_zone(
     let records_count = provider_records.len();
     for provider_record in provider_records {
         sqlx::query(
-            "INSERT INTO dns_records (zone_id, name, record_type, value, ttl, priority) VALUES ($1, $2, $3, $4, $5, $6)"
+            r#"INSERT INTO dns_records (zone_id, name, "type", value, ttl, priority) VALUES ($1, $2, $3, $4, $5, $6)"#
         )
         .bind(zone_id)
         .bind(&provider_record.name)
@@ -311,16 +308,11 @@ pub async fn sync_dns_zone(
 
 pub async fn zone_transfer(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
 ) -> ApiResult<Json<Value>> {
-    // Get the zone
-    let zone = sqlx::query_as::<_, DnsZone>(
-        "SELECT * FROM dns_zones WHERE id = $1"
-    )
-    .bind(zone_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(ApiError::NotFound)?;
+    let user_id = claims_user_id(&claims)?;
+    let zone = ensure_zone_owner(&state, zone_id, user_id).await?;
 
     // Get DNS provider
     let provider = state.dns_providers.get(&zone.dns_provider)
@@ -339,16 +331,11 @@ pub async fn zone_transfer(
 
 pub async fn enable_dnssec(
     State(state): State<AppState>,
+    claims: Claims,
     Path(zone_id): Path<Uuid>,
 ) -> ApiResult<Json<Value>> {
-    // Get the zone
-    let zone = sqlx::query_as::<_, DnsZone>(
-        "SELECT * FROM dns_zones WHERE id = $1"
-    )
-    .bind(zone_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or(ApiError::NotFound)?;
+    let user_id = claims_user_id(&claims)?;
+    let zone = ensure_zone_owner(&state, zone_id, user_id).await?;
 
     // Get DNS provider
     let provider = state.dns_providers.get(&zone.dns_provider)
@@ -369,4 +356,16 @@ pub async fn enable_dnssec(
         "message": "DNSSEC enabled successfully",
         "zone_id": zone_id
     })))
+}
+
+/// Fetch a DNS zone by id, ensuring it belongs to the authenticated user.
+/// Returns `NotFound` when the zone does not exist or is owned by someone else,
+/// so callers never leak the existence of another user's zones.
+async fn ensure_zone_owner(state: &AppState, zone_id: Uuid, user_id: Uuid) -> ApiResult<DnsZone> {
+    sqlx::query_as::<_, DnsZone>("SELECT * FROM dns_zones WHERE id = $1 AND user_id = $2")
+        .bind(zone_id)
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)
 }

@@ -10,4 +10,11 @@ pub mod job;
 pub mod audit;
 
 pub use user::{User, CreateUserRequest, UpdateUserRequest, UserRole};
+pub use web_domain::{WebDomain, CreateWebDomainRequest, UpdateWebDomainRequest};
 pub use dns::{DnsZone, DnsRecord, CreateDnsZoneRequest, CreateDnsRecordRequest};
+pub use mail::{MailDomain, MailAccount, CreateMailDomainRequest, CreateMailAccountRequest};
+pub use database::{Database, CreateDatabaseRequest};
+pub use cron::{CronJob, CreateCronJobRequest};
+pub use ssl::{SslCertificate, RequestCertificateRequest};
+pub use backup::{BackupConfig, CreateBackupConfigRequest};
+pub use job::{SystemJob, CreateSystemJobRequest};
