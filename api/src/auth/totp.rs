@@ -32,16 +32,22 @@ pub struct TotpSetupData {
     pub backup_codes: Vec<String>,
 }
 
+impl Default for TotpManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TotpManager {
     pub fn new() -> Self {
         Self
     }
 
     // Generate a new TOTP secret for a user
-    pub fn generate_secret(&self, user_id: Uuid, username: &str, service_name: &str) -> Result<TotpSetupData> {
+    pub fn generate_secret(&self, _user_id: Uuid, username: &str, service_name: &str) -> Result<TotpSetupData> {
         // Generate 32-byte (160-bit) secret
         let secret_bytes: Vec<u8> = (0..20).map(|_| rand::random::<u8>()).collect();
-        let secret = base32::encode(base32::Alphabet::RFC4648 { padding: false }, &secret_bytes);
+        let secret = base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &secret_bytes);
         
         // Generate backup codes (8 codes, 8 characters each)
         let backup_codes: Vec<String> = (0..8)
@@ -100,7 +106,7 @@ impl TotpManager {
         let current_step = current_time / 30; // 30-second time step
         
         // Check current time step and surrounding windows
-        for i in 0..=window {
+        for i in 0..=window as u64 {
             // Check current and previous steps
             if current_step >= i {
                 let step = current_step - i;
@@ -123,7 +129,7 @@ impl TotpManager {
 
     // Generate TOTP code for a specific time step
     fn generate_totp_code(&self, secret: &str, time_step: u64) -> Result<u32> {
-        let secret_bytes = base32::decode(base32::Alphabet::RFC4648 { padding: false }, secret)
+        let secret_bytes = base32::decode(base32::Alphabet::Rfc4648 { padding: false }, secret)
             .ok_or_else(|| anyhow!("Invalid secret"))?;
         
         let time_bytes = time_step.to_be_bytes();
@@ -158,7 +164,7 @@ impl TotpManager {
                 let code: String = (0..8)
                     .map(|_| {
                         let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-                        chars[rand::random::<usize>() % chars.len()] as char
+                        chars[rand::random_range(0..chars.len())] as char
                     })
                     .collect();
                 
@@ -193,7 +199,7 @@ impl TotpManager {
     // Validate secret format
     pub fn validate_secret(&self, secret: &str) -> bool {
         // Check if it's valid base32
-        base32::decode(base32::Alphabet::RFC4648 { padding: false }, secret).is_some()
+        base32::decode(base32::Alphabet::Rfc4648 { padding: false }, secret).is_some()
     }
 
     // Generate QR code for existing secret

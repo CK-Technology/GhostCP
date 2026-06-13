@@ -28,23 +28,36 @@ impl DnsChallenge {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
+        use base64::Engine as _;
+
         let mut hasher = DefaultHasher::new();
         key_auth.hash(&mut hasher);
         let hash = hasher.finish();
 
-        base64::encode(hash.to_string().as_bytes())
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash.to_string().as_bytes())
     }
 }
 
 #[async_trait]
 impl ChallengeHandler for DnsChallenge {
-    async fn setup_challenge(&self, domain: &str, token: &str, key_auth: &str) -> Result<(), AcmeError> {
+    async fn setup_challenge(&self, domain: &str, _token: &str, key_auth: &str) -> Result<(), AcmeError> {
         let challenge_domain = Self::get_challenge_domain(domain);
         let txt_value = Self::get_dns_txt_value(key_auth);
 
         // Create TXT record for the challenge
+        let record = crate::drivers::dns::DnsRecord {
+            id: None,
+            zone_id: domain.to_string(),
+            name: challenge_domain.clone(),
+            record_type: "TXT".to_string(),
+            content: txt_value.clone(),
+            ttl: 300,
+            priority: None,
+            proxied: None,
+        };
+
         self.dns_provider
-            .create_record(&challenge_domain, "TXT", &txt_value, 300)
+            .create_record(&record)
             .await
             .map_err(|e| AcmeError::DnsChallenge(format!("Failed to create DNS record: {}", e)))?;
 
@@ -61,28 +74,39 @@ impl ChallengeHandler for DnsChallenge {
         Ok(())
     }
 
-    async fn cleanup_challenge(&self, domain: &str, token: &str) -> Result<(), AcmeError> {
+    async fn cleanup_challenge(&self, domain: &str, _token: &str) -> Result<(), AcmeError> {
         let challenge_domain = Self::get_challenge_domain(domain);
 
-        // Delete the TXT record
-        self.dns_provider
-            .delete_record(&challenge_domain, "TXT")
+        // Find the challenge TXT record, then delete it by id
+        let records = self
+            .dns_provider
+            .list_records(domain, Some("TXT"))
             .await
-            .map_err(|e| AcmeError::DnsChallenge(format!("Failed to delete DNS record: {}", e)))?;
+            .map_err(|e| AcmeError::DnsChallenge(format!("Failed to list DNS records: {}", e)))?;
+
+        if let Some(record) = records.iter().find(|r| r.name == challenge_domain)
+            && let Some(id) = &record.id {
+                self.dns_provider
+                    .delete_record(domain, id)
+                    .await
+                    .map_err(|e| AcmeError::DnsChallenge(format!("Failed to delete DNS record: {}", e)))?;
+            }
 
         tracing::info!("DNS challenge cleaned up for domain: {}", domain);
 
         Ok(())
     }
 
-    async fn verify_challenge(&self, domain: &str, token: &str, key_auth: &str) -> Result<bool, AcmeError> {
+    async fn verify_challenge(&self, domain: &str, _token: &str, key_auth: &str) -> Result<bool, AcmeError> {
         let challenge_domain = Self::get_challenge_domain(domain);
         let expected_value = Self::get_dns_txt_value(key_auth);
 
         // Query DNS to verify the record exists
-        match self.dns_provider.get_record(&challenge_domain, "TXT").await {
+        match self.dns_provider.list_records(domain, Some("TXT")).await {
             Ok(records) => {
-                let found = records.iter().any(|record| record.value == expected_value);
+                let found = records
+                    .iter()
+                    .any(|record| record.name == challenge_domain && record.content == expected_value);
                 if found {
                     tracing::info!("DNS challenge verified for domain: {}", domain);
                     Ok(true)

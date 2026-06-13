@@ -5,7 +5,6 @@ use std::process::Command;
 use std::fs;
 use std::collections::HashMap;
 use chrono::{DateTime, Utc, Duration};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MonitoringManager {
@@ -160,6 +159,12 @@ impl From<SystemMetrics> for FlatSystemMetrics {
     }
 }
 
+impl Default for MonitoringManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MonitoringManager {
     pub fn new() -> Self {
         Self {
@@ -252,11 +257,10 @@ impl MonitoringManager {
         ];
 
         for path in &temp_paths {
-            if let Ok(content) = fs::read_to_string(path) {
-                if let Ok(temp_millidegree) = content.trim().parse::<f64>() {
+            if let Ok(content) = fs::read_to_string(path)
+                && let Ok(temp_millidegree) = content.trim().parse::<f64>() {
                     return Ok(temp_millidegree / 1000.0);
                 }
-            }
         }
 
         Err(anyhow!("Temperature not available"))
@@ -270,7 +274,6 @@ impl MonitoringManager {
         for line in meminfo.lines() {
             if let Some((key, value)) = line.split_once(':') {
                 let kb_value = value
-                    .trim()
                     .split_whitespace()
                     .next()
                     .and_then(|v| v.parse::<u64>().ok())
@@ -312,7 +315,7 @@ impl MonitoringManager {
     // Disk metrics collection
     async fn collect_disk_metrics(&self) -> Result<Vec<DiskMetrics>> {
         let output = Command::new("df")
-            .args(&["-h", "-T", "--exclude-type=tmpfs", "--exclude-type=devtmpfs"])
+            .args(["-h", "-T", "--exclude-type=tmpfs", "--exclude-type=devtmpfs"])
             .output()?;
 
         let df_output = String::from_utf8_lossy(&output.stdout);
@@ -393,7 +396,7 @@ impl MonitoringManager {
 
     async fn get_inode_info(&self, mount_point: &str) -> Result<(u64, u64)> {
         let output = Command::new("df")
-            .args(&["-i", mount_point])
+            .args(["-i", mount_point])
             .output()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
@@ -413,13 +416,13 @@ impl MonitoringManager {
         // Read /proc/diskstats for I/O statistics
         let diskstats = fs::read_to_string("/proc/diskstats").unwrap_or_default();
         
-        let device_name = device.split('/').last().unwrap_or(device);
+        let device_name = device.split('/').next_back().unwrap_or(device);
         
         for line in diskstats.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 14 && parts[2] == device_name {
-                let read_bytes = parts[5].parse::<u64>().unwrap_or(0) * 512; // sectors to bytes
-                let write_bytes = parts[9].parse::<u64>().unwrap_or(0) * 512;
+                let _read_bytes = parts[5].parse::<u64>().unwrap_or(0) * 512; // sectors to bytes
+                let _write_bytes = parts[9].parse::<u64>().unwrap_or(0) * 512;
                 let io_time = parts[12].parse::<u64>().unwrap_or(0);
                 
                 // These would need to be calculated as rates over time
@@ -483,7 +486,7 @@ impl MonitoringManager {
             .collect();
 
         Ok(LoadAverage {
-            one_minute: values.get(0).copied().unwrap_or(0.0),
+            one_minute: values.first().copied().unwrap_or(0.0),
             five_minutes: values.get(1).copied().unwrap_or(0.0),
             fifteen_minutes: values.get(2).copied().unwrap_or(0.0),
         })
@@ -504,7 +507,7 @@ impl MonitoringManager {
     // Process metrics collection
     async fn collect_process_metrics(&self) -> Result<ProcessMetrics> {
         let output = Command::new("ps")
-            .args(&["aux", "--sort=-pcpu"])
+            .args(["aux", "--sort=-pcpu"])
             .output()?;
 
         let ps_output = String::from_utf8_lossy(&output.stdout);
@@ -547,7 +550,7 @@ impl MonitoringManager {
 
         // Sort by memory usage for top memory processes
         let mut memory_processes = processes.clone();
-        memory_processes.sort_by(|a, b| b.memory_mb.cmp(&a.memory_mb));
+        memory_processes.sort_by_key(|p| std::cmp::Reverse(p.memory_mb));
 
         Ok(ProcessMetrics {
             total_processes,
@@ -565,7 +568,7 @@ impl MonitoringManager {
 
         for service in services {
             let output = Command::new("systemctl")
-                .args(&["status", service, "--no-pager", "-l"])
+                .args(["status", service, "--no-pager", "-l"])
                 .output()?;
 
             let status_output = String::from_utf8_lossy(&output.stdout);
@@ -596,7 +599,7 @@ impl MonitoringManager {
 
     async fn is_service_enabled(&self, service: &str) -> Result<bool> {
         let output = Command::new("systemctl")
-            .args(&["is-enabled", service])
+            .args(["is-enabled", service])
             .output()?;
 
         Ok(output.status.success())
@@ -604,56 +607,62 @@ impl MonitoringManager {
 
     async fn get_service_memory_usage(&self, service: &str) -> Result<u64> {
         let output = Command::new("systemctl")
-            .args(&["show", service, "--property=MemoryCurrent"])
+            .args(["show", service, "--property=MemoryCurrent"])
             .output()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        if let Some(line) = output_str.lines().next() {
-            if let Some(value) = line.split('=').nth(1) {
+        if let Some(line) = output_str.lines().next()
+            && let Some(value) = line.split('=').nth(1) {
                 let bytes = value.parse::<u64>()?;
                 return Ok(bytes / 1024 / 1024); // Convert to MB
             }
-        }
 
         Err(anyhow!("Could not get memory usage"))
     }
 
     async fn get_service_cpu_usage(&self, service: &str) -> Result<f64> {
         let output = Command::new("systemctl")
-            .args(&["show", service, "--property=CPUUsageNSec"])
+            .args(["show", service, "--property=CPUUsageNSec"])
             .output()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        if let Some(line) = output_str.lines().next() {
-            if let Some(value) = line.split('=').nth(1) {
+        if let Some(line) = output_str.lines().next()
+            && let Some(value) = line.split('=').nth(1) {
                 let nanosecs = value.parse::<u64>()?;
                 // This would need to be calculated as a rate over time
                 return Ok(nanosecs as f64 / 1_000_000_000.0); // Simplified
             }
-        }
 
         Err(anyhow!("Could not get CPU usage"))
     }
 
     // Store metrics in database (for time series data)
     pub async fn store_metrics(&self, metrics: &SystemMetrics, db: &sqlx::PgPool) -> Result<()> {
+        let flat: FlatSystemMetrics = metrics.clone().into();
         sqlx::query!(
             r#"
             INSERT INTO system_metrics (
-                timestamp, cpu_usage_percent, memory_usage_percent, 
-                memory_total_mb, memory_used_mb, load_avg_1m, 
-                load_avg_5m, load_avg_15m, uptime_seconds
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                cpu_usage, memory_total, memory_used, memory_available,
+                disk_total, disk_used, disk_available,
+                network_rx_bytes, network_tx_bytes,
+                load_average_1m, load_average_5m, load_average_15m,
+                uptime_seconds, timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             "#,
-            metrics.timestamp,
-            metrics.cpu.usage_percent,
-            metrics.memory.usage_percent,
-            metrics.memory.total_mb as i64,
-            metrics.memory.used_mb as i64,
-            metrics.load_average.one_minute,
-            metrics.load_average.five_minutes,
-            metrics.load_average.fifteen_minutes,
-            metrics.uptime as i64
+            flat.cpu_usage,
+            flat.memory_total as i64,
+            flat.memory_used as i64,
+            flat.memory_available as i64,
+            flat.disk_total as i64,
+            flat.disk_used as i64,
+            flat.disk_available as i64,
+            flat.network_rx_bytes as i64,
+            flat.network_tx_bytes as i64,
+            flat.load_average_1m,
+            flat.load_average_5m,
+            flat.load_average_15m,
+            flat.uptime_seconds as i64,
+            flat.timestamp,
         )
         .execute(db)
         .await?;
@@ -669,7 +678,7 @@ impl MonitoringManager {
     ) -> Result<Vec<SystemMetrics>> {
         let since = Utc::now() - Duration::hours(hours);
         
-        let rows = sqlx::query!(
+        let _rows = sqlx::query!(
             "SELECT * FROM system_metrics WHERE timestamp >= $1 ORDER BY timestamp ASC",
             since
         )
@@ -689,7 +698,7 @@ impl MonitoringManager {
     // Get process list
     pub async fn get_process_list(&self) -> Result<Vec<ProcessInfo>> {
         let output = Command::new("ps")
-            .args(&["aux", "--sort=-pcpu"])
+            .args(["aux", "--sort=-pcpu"])
             .output()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
@@ -697,8 +706,8 @@ impl MonitoringManager {
 
         for line in output_str.lines().skip(1).take(10) { // Top 10 processes
             let fields: Vec<&str> = line.split_whitespace().collect();
-            if fields.len() >= 11 {
-                if let (Ok(pid), Ok(cpu), Ok(mem)) = (
+            if fields.len() >= 11
+                && let (Ok(pid), Ok(cpu), Ok(mem)) = (
                     fields[1].parse::<u32>(),
                     fields[2].parse::<f64>(),
                     fields[3].parse::<f64>(),
@@ -711,7 +720,6 @@ impl MonitoringManager {
                         user: fields[0].to_string(),
                     });
                 }
-            }
         }
 
         Ok(processes)

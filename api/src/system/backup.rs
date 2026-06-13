@@ -3,7 +3,6 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tokio::fs;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -135,7 +134,7 @@ impl BackupManager {
         }
 
         let output = Command::new("wget")
-            .args(&[
+            .args([
                 "-O",
                 "/tmp/restic.bz2",
                 "https://github.com/restic/restic/releases/latest/download/restic_linux_amd64.bz2"
@@ -147,15 +146,15 @@ impl BackupManager {
         }
 
         Command::new("bunzip2")
-            .args(&["/tmp/restic.bz2"])
+            .args(["/tmp/restic.bz2"])
             .output()?;
 
         Command::new("chmod")
-            .args(&["+x", "/tmp/restic"])
+            .args(["+x", "/tmp/restic"])
             .output()?;
 
         Command::new("mv")
-            .args(&["/tmp/restic", self.restic_path.to_str().unwrap()])
+            .args(["/tmp/restic", self.restic_path.to_str().unwrap()])
             .output()?;
 
         Ok(())
@@ -167,7 +166,7 @@ impl BackupManager {
         
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&["init", "--repo", &repo_url])
+            .args(["init", "--repo", &repo_url])
             .output()?;
 
         if !output.status.success() {
@@ -255,7 +254,7 @@ impl BackupManager {
 
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&[
+            .args([
                 "restore",
                 snapshot_id,
                 "--repo", &repo_url,
@@ -277,7 +276,7 @@ impl BackupManager {
 
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&["snapshots", "--repo", &repo_url, "--json"])
+            .args(["snapshots", "--repo", &repo_url, "--json"])
             .output()?;
 
         if !output.status.success() {
@@ -372,7 +371,7 @@ impl BackupManager {
         match db_type {
             "mysql" | "mariadb" => {
                 Command::new("mysqldump")
-                    .args(&[
+                    .args([
                         "--single-transaction",
                         "--routines",
                         "--triggers",
@@ -383,7 +382,7 @@ impl BackupManager {
             },
             "postgresql" => {
                 Command::new("pg_dump")
-                    .args(&[
+                    .args([
                         "-d", db_name,
                         "-f", dump_path.to_str().unwrap(),
                         "--clean",
@@ -400,11 +399,10 @@ impl BackupManager {
     fn parse_snapshot_id(&self, output: &str) -> Result<String> {
         // Parse JSON output to get snapshot ID
         for line in output.lines() {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(id) = json.get("snapshot_id").and_then(|v| v.as_str()) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line)
+                && let Some(id) = json.get("snapshot_id").and_then(|v| v.as_str()) {
                     return Ok(id.to_string());
                 }
-            }
         }
         Err(anyhow!("Could not parse snapshot ID"))
     }
@@ -427,7 +425,7 @@ impl BackupManager {
 
         // Add to crontab
         let output = Command::new("crontab")
-            .args(&["-l"])
+            .args(["-l"])
             .output()?;
 
         let mut crontab = String::from_utf8_lossy(&output.stdout).to_string();
@@ -455,7 +453,7 @@ impl BackupManager {
 
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&["check", "--repo", &repo_url])
+            .args(["check", "--repo", &repo_url])
             .output()?;
 
         let is_healthy = output.status.success();
@@ -478,7 +476,7 @@ impl BackupManager {
 
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&["stats", "--repo", &repo_url, "--json"])
+            .args(["stats", "--repo", &repo_url, "--json"])
             .output()?;
 
         if !output.status.success() {
@@ -513,7 +511,7 @@ impl BackupManager {
         // Test authentication by listing snapshots
         let output = Command::new(&self.restic_path)
             .env("RESTIC_PASSWORD", &config.encryption_password)
-            .args(&["snapshots", "--repo", &repo_url, "--json"])
+            .args(["snapshots", "--repo", &repo_url, "--json"])
             .output();
 
         match output {

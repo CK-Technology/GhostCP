@@ -1,8 +1,8 @@
 // Email security integration with SpamAssassin, ClamAV, and SSL/TLS support
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs;
 use uuid::Uuid;
@@ -159,8 +159,7 @@ log_level info
         fs::write(&local_cf_path, main_config).await?;
 
         // Create init script for SpamAssassin
-        let init_script = format!(
-            r#"#!/bin/bash
+        let init_script = r#"#!/bin/bash
 # SpamAssassin daemon init script
 SPAMD_OPTS="--create-prefs --max-children 5 --helper-home-dir --syslog --pidfile=/var/run/spamd.pid"
 SPAMD_USER="spamd"
@@ -187,8 +186,7 @@ case "$1" in
         fi
         ;;
 esac
-"#
-        );
+"#.to_string();
 
         let init_path = self.config_path.join("spamassassin-init.sh");
         fs::write(&init_path, init_script).await?;
@@ -408,7 +406,7 @@ submission inet n - y - - smtpd
             config.private_key_path.to_str().unwrap(),
             config.ssl_protocols.join(" "),
             if config.smtp_ssl_enabled {
-                format!("smtps inet n - y - - smtpd\n  -o syslog_name=postfix/smtps\n  -o smtpd_tls_wrappermode=yes\n  -o smtpd_sasl_auth_enable=yes")
+                "smtps inet n - y - - smtpd\n  -o syslog_name=postfix/smtps\n  -o smtpd_tls_wrappermode=yes\n  -o smtpd_sasl_auth_enable=yes".to_string()
             } else {
                 String::new()
             }
@@ -450,7 +448,7 @@ submission inet n - y - - smtpd
         Ok(result)
     }
 
-    async fn scan_with_spamassassin(&self, email_path: &PathBuf, mut result: EmailScanResult) -> Result<EmailScanResult> {
+    async fn scan_with_spamassassin(&self, email_path: &Path, mut result: EmailScanResult) -> Result<EmailScanResult> {
         let output = Command::new("spamassassin")
             .args(["-t", email_path.to_str().unwrap()])
             .output()?;
@@ -462,17 +460,16 @@ submission inet n - y - - smtpd
             if line.contains("X-Spam-Status: Yes") {
                 result.is_spam = true;
             }
-            if line.starts_with("X-Spam-Score:") {
-                if let Some(score_str) = line.split(':').nth(1) {
+            if line.starts_with("X-Spam-Score:")
+                && let Some(score_str) = line.split(':').nth(1) {
                     result.spam_score = score_str.trim().parse().unwrap_or(0.0);
                 }
-            }
         }
 
         Ok(result)
     }
 
-    async fn scan_with_clamav(&self, email_path: &PathBuf, mut result: EmailScanResult) -> Result<EmailScanResult> {
+    async fn scan_with_clamav(&self, email_path: &Path, mut result: EmailScanResult) -> Result<EmailScanResult> {
         let output = Command::new("clamdscan")
             .args(["--fdpass", email_path.to_str().unwrap()])
             .output()?;
@@ -482,11 +479,10 @@ submission inet n - y - - smtpd
         if stdout.contains("FOUND") {
             result.has_virus = true;
             // Extract virus name
-            if let Some(line) = stdout.lines().find(|l| l.contains("FOUND")) {
-                if let Some(virus) = line.split(':').nth(1) {
+            if let Some(line) = stdout.lines().find(|l| l.contains("FOUND"))
+                && let Some(virus) = line.split(':').nth(1) {
                     result.virus_name = Some(virus.trim().replace(" FOUND", ""));
                 }
-            }
         }
 
         Ok(result)
@@ -538,12 +534,12 @@ submission inet n - y - - smtpd
         for line in content.lines() {
             if line.is_empty() { break; } // End of headers
             
-            if line.starts_with("From:") {
-                sender = line[5..].trim().to_string();
-            } else if line.starts_with("To:") {
-                recipient = line[3..].trim().to_string();
-            } else if line.starts_with("Subject:") {
-                subject = line[8..].trim().to_string();
+            if let Some(value) = line.strip_prefix("From:") {
+                sender = value.trim().to_string();
+            } else if let Some(value) = line.strip_prefix("To:") {
+                recipient = value.trim().to_string();
+            } else if let Some(value) = line.strip_prefix("Subject:") {
+                subject = value.trim().to_string();
             }
         }
 
@@ -562,7 +558,7 @@ submission inet n - y - - smtpd
     }
 
     // Release email from quarantine
-    pub async fn release_from_quarantine(&self, item_id: Uuid) -> Result<()> {
+    pub async fn release_from_quarantine(&self, _item_id: Uuid) -> Result<()> {
         // Implementation would move file back to mail queue
         // and update whitelist if needed
         Ok(())

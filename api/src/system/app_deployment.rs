@@ -2,12 +2,11 @@
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::fs;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use crate::templates::TemplateManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppDeploymentManager {
@@ -377,16 +376,16 @@ impl AppDeploymentManager {
 
         // Deploy based on type
         match &template.deployment_type {
-            DeploymentType::PHP { php_version, extensions } => {
+            DeploymentType::PHP { php_version: _, extensions: _ } => {
                 result = self.deploy_php_app(&app_path, template, &request, result).await?;
             },
-            DeploymentType::Docker { image, tag, compose_file } => {
+            DeploymentType::Docker { image: _, tag: _, compose_file: _ } => {
                 result = self.deploy_docker_app(&app_path, template, &request, result).await?;
             },
-            DeploymentType::NodeJS { node_version, build_command, start_command } => {
+            DeploymentType::NodeJS { node_version: _, build_command: _, start_command: _ } => {
                 result = self.deploy_nodejs_app(&app_path, template, &request, result).await?;
             },
-            DeploymentType::Static { build_command } => {
+            DeploymentType::Static { build_command: _ } => {
                 result = self.deploy_static_app(&app_path, template, &request, result).await?;
             },
         }
@@ -403,7 +402,7 @@ impl AppDeploymentManager {
 
     async fn deploy_php_app(
         &self,
-        app_path: &PathBuf,
+        app_path: &Path,
         template: &AppTemplate,
         request: &DeploymentRequest,
         mut result: DeploymentResult,
@@ -552,9 +551,9 @@ impl AppDeploymentManager {
 
     async fn deploy_static_app(
         &self,
-        app_path: &PathBuf,
-        template: &AppTemplate,
-        request: &DeploymentRequest,
+        _app_path: &PathBuf,
+        _template: &AppTemplate,
+        _request: &DeploymentRequest,
         mut result: DeploymentResult,
     ) -> Result<DeploymentResult> {
         result.logs.push("Starting static site deployment".to_string());
@@ -565,11 +564,12 @@ impl AppDeploymentManager {
     async fn configure_webserver(&self, request: &DeploymentRequest, template: &AppTemplate) -> Result<()> {
         // Generate nginx configuration
         if let Some(nginx_template) = &template.configuration.nginx_config {
-            let template_manager = TemplateManager::new(self.templates_path.clone());
-            let nginx_config = template_manager.render_template(
-                nginx_template,
-                &self.generate_template_vars(request, template).await?,
-            )?;
+            let mut context = tera::Context::new();
+            for (key, value) in self.generate_template_vars(request, template).await? {
+                context.insert(key, &value);
+            }
+            let nginx_config = tera::Tera::one_off(nginx_template, &context, false)
+                .map_err(|e| anyhow!("Template rendering failed: {}", e))?;
 
             let nginx_config_path = PathBuf::from("/etc/nginx/sites-available")
                 .join(&request.domain);
@@ -593,7 +593,7 @@ impl AppDeploymentManager {
 
     async fn run_post_install_steps(
         &self,
-        app_path: &PathBuf,
+        app_path: &Path,
         template: &AppTemplate,
         request: &DeploymentRequest,
         mut result: DeploymentResult,
@@ -604,7 +604,7 @@ impl AppDeploymentManager {
             let working_dir = step.working_directory
                 .as_ref()
                 .map(|d| app_path.join(d))
-                .unwrap_or_else(|| app_path.clone());
+                .unwrap_or_else(|| app_path.to_path_buf());
 
             // Replace template variables in command
             let command = self.replace_template_vars(&step.command, request, template).await?;
@@ -671,6 +671,7 @@ require_once ABSPATH . 'wp-settings.php';
     }
 
     async fn generate_hudu_compose(&self, request: &DeploymentRequest) -> Result<String> {
+        let hudu_url = format!("https://{}", request.domain);
         let compose = format!(
             r#"version: '3.8'
 services:
@@ -721,7 +722,7 @@ networks:
             request.database_config.as_ref().unwrap().username,
             request.database_config.as_ref().unwrap().password,
             request.database_config.as_ref().unwrap().database_name,
-            format!("https://{}", request.domain),
+            hudu_url,
             request.database_config.as_ref().unwrap().database_name,
             request.database_config.as_ref().unwrap().username,
             request.database_config.as_ref().unwrap().password,
@@ -790,7 +791,7 @@ networks:
         Ok(env_content)
     }
 
-    async fn generate_template_vars(&self, request: &DeploymentRequest, template: &AppTemplate) -> Result<HashMap<String, String>> {
+    async fn generate_template_vars(&self, request: &DeploymentRequest, _template: &AppTemplate) -> Result<HashMap<String, String>> {
         let mut vars = HashMap::new();
         vars.insert("DOMAIN".to_string(), request.domain.clone());
         vars.insert("SITE_URL".to_string(), format!("https://{}", request.domain));
@@ -822,11 +823,11 @@ networks:
     fn generate_random_string(&self, length: usize) -> String {
         use rand::Rng;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         (0..length)
             .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
+                let idx = rng.random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect()

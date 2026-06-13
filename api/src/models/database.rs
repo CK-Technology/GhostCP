@@ -1,6 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 // TODO: Implement full models - these are stubs
 #[derive(Debug, Serialize)]

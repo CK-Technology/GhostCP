@@ -1,16 +1,12 @@
-// settings management page
-use leptos::*;
+// Settings page
+use leptos::prelude::*;
 
 #[component]
-pub fn settingsPage() -> impl IntoView {
+pub fn SettingsPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
-            <h1>"settings Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"settings management functionality coming soon."</p>
-                </div>
-            </div>
+            <h1>"Settings"</h1>
+            <p>"Settings functionality coming soon."</p>
         </div>
     }
 }

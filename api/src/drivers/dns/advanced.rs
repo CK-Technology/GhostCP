@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::net::IpAddr;
 use chrono::{DateTime, Utc};
-use trust_dns_resolver::Resolver;
-use trust_dns_resolver::config::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DnssecConfig {

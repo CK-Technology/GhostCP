@@ -2,7 +2,7 @@
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::process::{Command, Stdio};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -69,7 +69,7 @@ impl AcmeManager {
         }
 
         let output = Command::new("curl")
-            .args(&[
+            .args([
                 "-s",
                 "https://get.acme.sh",
                 "|",
@@ -210,7 +210,7 @@ impl AcmeManager {
     // Renew all certificates
     pub async fn renew_all(&self) -> Result<Vec<String>> {
         let output = Command::new(&self.config.acme_sh_path)
-            .args(&[
+            .args([
                 "--cron",
                 "--config-home", self.config.config_home.to_str().unwrap(),
             ])
@@ -286,7 +286,7 @@ impl AcmeManager {
     // Revoke a certificate
     pub async fn revoke_certificate(&self, domain: &str) -> Result<()> {
         let output = Command::new(&self.config.acme_sh_path)
-            .args(&[
+            .args([
                 "--revoke",
                 "-d", domain,
                 "--config-home", self.config.config_home.to_str().unwrap(),
@@ -311,7 +311,7 @@ impl AcmeManager {
     // List all certificates
     pub async fn list_certificates(&self) -> Result<Vec<Certificate>> {
         let output = Command::new(&self.config.acme_sh_path)
-            .args(&[
+            .args([
                 "--list",
                 "--config-home", self.config.config_home.to_str().unwrap(),
             ])

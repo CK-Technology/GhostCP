@@ -136,11 +136,11 @@ impl NginxManager {
         
         // Set proper permissions (readable only by root/nginx)
         Command::new("chmod")
-            .args(&["600", dest_key.to_str().unwrap()])
+            .args(["600", dest_key.to_str().unwrap()])
             .output()?;
         
         Command::new("chown")
-            .args(&["root:nginx", domain_ssl_dir.to_str().unwrap(), "-R"])
+            .args(["root:nginx", domain_ssl_dir.to_str().unwrap(), "-R"])
             .output()?;
         
         // Update site configuration to use SSL
@@ -162,11 +162,13 @@ impl NginxManager {
         
         // Update the template context and regenerate
         // This would normally fetch from database
-        let mut context = TemplateContext::default();
-        context.domain = domain.to_string();
-        context.ssl_enabled = true;
-        context.ssl_cert_path = format!("/etc/nginx/ssl/{}/fullchain.pem", domain);
-        context.ssl_key_path = format!("/etc/nginx/ssl/{}/key.pem", domain);
+        let context = TemplateContext {
+            domain: domain.to_string(),
+            ssl_enabled: true,
+            ssl_cert_path: format!("/etc/nginx/ssl/{}/fullchain.pem", domain),
+            ssl_key_path: format!("/etc/nginx/ssl/{}/key.pem", domain),
+            ..TemplateContext::default()
+        };
         
         self.deploy_site(&context).await?;
         
@@ -181,7 +183,7 @@ impl NginxManager {
         
         // Test configuration
         let output = Command::new("nginx")
-            .args(&["-t", "-c", &temp_file])
+            .args(["-t", "-c", &temp_file])
             .output()?;
         
         // Clean up temp file
@@ -198,7 +200,7 @@ impl NginxManager {
     // Test NGINX configuration
     pub async fn test_config(&self) -> Result<()> {
         let output = Command::new("nginx")
-            .args(&["-t"])
+            .args(["-t"])
             .output()?;
         
         if !output.status.success() {
@@ -215,7 +217,7 @@ impl NginxManager {
         self.test_config().await?;
         
         let output = Command::new("systemctl")
-            .args(&["reload", "nginx"])
+            .args(["reload", "nginx"])
             .output()?;
         
         if !output.status.success() {
@@ -228,7 +230,7 @@ impl NginxManager {
     // Restart NGINX
     pub async fn restart(&self) -> Result<()> {
         let output = Command::new("systemctl")
-            .args(&["restart", "nginx"])
+            .args(["restart", "nginx"])
             .output()?;
         
         if !output.status.success() {
@@ -241,15 +243,15 @@ impl NginxManager {
     // Get NGINX status
     pub async fn status(&self) -> Result<NginxStatus> {
         let output = Command::new("systemctl")
-            .args(&["status", "nginx", "--no-pager"])
+            .args(["status", "nginx", "--no-pager"])
             .output()?;
         
-        let status_text = String::from_utf8_lossy(&output.stdout);
+        let _status_text = String::from_utf8_lossy(&output.stdout);
         let is_running = output.status.success();
         
         // Parse nginx -V for version
         let version_output = Command::new("nginx")
-            .args(&["-v"])
+            .args(["-v"])
             .output()?;
         
         let version = String::from_utf8_lossy(&version_output.stderr)
@@ -284,7 +286,7 @@ impl NginxManager {
 
     async fn get_uptime(&self) -> Result<String> {
         let output = Command::new("systemctl")
-            .args(&["show", "nginx", "--property=ActiveEnterTimestamp"])
+            .args(["show", "nginx", "--property=ActiveEnterTimestamp"])
             .output()?;
         
         let timestamp = String::from_utf8_lossy(&output.stdout);
@@ -294,11 +296,11 @@ impl NginxManager {
     // Set file permissions
     async fn set_permissions(&self, path: &str, user: &str, group: &str) -> Result<()> {
         Command::new("chown")
-            .args(&["-R", &format!("{}:{}", user, group), path])
+            .args(["-R", &format!("{}:{}", user, group), path])
             .output()?;
         
         Command::new("chmod")
-            .args(&["-R", "755", path])
+            .args(["-R", "755", path])
             .output()?;
         
         Ok(())
@@ -311,7 +313,7 @@ impl NginxManager {
         
         // Parse access log for basic stats
         let access_count = Command::new("wc")
-            .args(&["-l", &access_log])
+            .args(["-l", &access_log])
             .output()
             .map(|o| {
                 String::from_utf8_lossy(&o.stdout)
@@ -324,7 +326,7 @@ impl NginxManager {
         
         // Count errors
         let error_count = Command::new("grep")
-            .args(&["-c", "error", &error_log])
+            .args(["-c", "error", &error_log])
             .output()
             .map(|o| {
                 String::from_utf8_lossy(&o.stdout)

@@ -10,7 +10,6 @@ pub mod php_fpm;
 pub mod postfix;
 pub mod dovecot;
 
-use nginx::NginxTemplateData;
 
 // Alias for backwards compatibility
 pub type TemplateManager = TemplateEngine;
@@ -201,7 +200,7 @@ impl TemplateEngine {
     }
 
     pub fn list_available_templates(&self) -> Vec<String> {
-        self.tera.get_template_names().collect()
+        self.tera.get_template_names().map(|s| s.to_string()).collect()
     }
 
     pub fn validate_template(&self, template_name: &str, context: &TemplateContext) -> Result<()> {

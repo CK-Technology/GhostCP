@@ -1,11 +1,9 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sqlx::{PgPool, Row};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::{
@@ -93,11 +91,11 @@ pub async fn create_user(
 
     // Hash password
     use argon2::{
-        password_hash::{PasswordHasher, SaltString},
+        password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
         Argon2,
     };
-    
-    let salt = SaltString::generate(&mut rand::thread_rng());
+
+    let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
         .hash_password(payload.password.as_bytes(), &salt)
@@ -128,7 +126,7 @@ pub async fn create_user(
     .bind(&password_hash)
     .bind(&payload.full_name)
     .bind(&package_name)
-    .bind(&role.to_string())
+    .bind(role.to_string())
     .bind(payload.disk_quota.unwrap_or(0))
     .bind(payload.bandwidth_quota.unwrap_or(0))
     .bind(payload.web_domains_limit.unwrap_or(0))
@@ -174,7 +172,7 @@ pub async fn get_user(
 pub async fn update_user(
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
-    Json(payload): Json<UpdateUserRequest>,
+    Json(_payload): Json<UpdateUserRequest>,
 ) -> ApiResult<Json<User>> {
     // TODO: Implement proper dynamic update query
     // For now, just fetch and return existing user

@@ -1,0 +1,22 @@
+# cargo-audit configuration for GhostCP.
+#
+# Advisories listed here are reviewed and intentionally ignored with a written
+# justification. Each entry must explain why it does not affect this project.
+
+[advisories]
+ignore = [
+    # rsa "Marvin Attack" timing side-channel. `rsa` is pulled in solely by
+    # `sqlx-macros-core`, which depends on every sqlx driver (incl. sqlx-mysql)
+    # so the compile-time `query!`/`query_as!` macros can validate against any
+    # backend. GhostCP is PostgreSQL-only: no MySQL driver runs at runtime and
+    # no RSA operation is ever executed by the shipped binary. The crate exists
+    # only in the proc-macro build graph. Upstream has no fixed release.
+    "RUSTSEC-2023-0071",
+]
+
+# Two `unmaintained` advisories remain as warnings (not vulnerabilities):
+# `paste` (RUSTSEC-2024-0436) and `proc-macro-error2` (RUSTSEC-2026-0173).
+# Both are compile-time-only transitive dependencies of the Leptos 0.8 macro
+# crates; neither runs in the shipped binary and neither has an upstream
+# replacement we can pin. They are reported as warnings, not vulnerabilities,
+# so `cargo audit` still exits clean without ignoring them here.

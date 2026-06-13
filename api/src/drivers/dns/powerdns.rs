@@ -2,7 +2,6 @@ use super::{DnsProvider, DnsError, DnsRecord, DnsZone, DnsZoneInfo, DnssecKey};
 use async_trait::async_trait;
 use reqwest::{Client, header::{HeaderMap, HeaderValue}};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct PowerDns {
@@ -156,7 +155,7 @@ impl DnsProvider for PowerDns {
 
     async fn health_check(&self) -> Result<(), DnsError> {
         let response = self.client
-            .get(&format!("{}/api/v1/servers/{}", self.base_url, self.server_id))
+            .get(format!("{}/api/v1/servers/{}", self.base_url, self.server_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -182,7 +181,7 @@ impl DnsProvider for PowerDns {
         };
 
         let response = self.client
-            .post(&self.zones_url())
+            .post(self.zones_url())
             .json(&create_request)
             .send()
             .await
@@ -219,7 +218,7 @@ impl DnsProvider for PowerDns {
 
         // Apply the SOA record
         self.client
-            .patch(&self.zone_url(&zone_id))
+            .patch(self.zone_url(&zone_id))
             .json(&PowerDnsZone {
                 id: None,
                 name: zone_id.clone(),
@@ -259,7 +258,7 @@ impl DnsProvider for PowerDns {
 
     async fn get_zone(&self, zone_id: &str) -> Result<DnsZoneInfo, DnsError> {
         let response = self.client
-            .get(&self.zone_url(zone_id))
+            .get(self.zone_url(zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -277,7 +276,7 @@ impl DnsProvider for PowerDns {
 
     async fn list_zones(&self) -> Result<Vec<DnsZoneInfo>, DnsError> {
         let response = self.client
-            .get(&self.zones_url())
+            .get(self.zones_url())
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -293,7 +292,7 @@ impl DnsProvider for PowerDns {
         }).collect())
     }
 
-    async fn update_zone(&self, zone_id: &str, zone: &DnsZone) -> Result<(), DnsError> {
+    async fn update_zone(&self, _zone_id: &str, _zone: &DnsZone) -> Result<(), DnsError> {
         // PowerDNS zone updates are typically done via RRSet modifications
         // Here we could update the SOA record with new values
         Ok(())
@@ -301,7 +300,7 @@ impl DnsProvider for PowerDns {
 
     async fn delete_zone(&self, zone_id: &str) -> Result<(), DnsError> {
         let response = self.client
-            .delete(&self.zone_url(zone_id))
+            .delete(self.zone_url(zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -358,7 +357,7 @@ impl DnsProvider for PowerDns {
         };
 
         let response = self.client
-            .patch(&self.zone_url(&record.zone_id))
+            .patch(self.zone_url(&record.zone_id))
             .json(&zone_update)
             .send()
             .await
@@ -383,7 +382,7 @@ impl DnsProvider for PowerDns {
 
     async fn list_records(&self, zone_id: &str, record_type: Option<&str>) -> Result<Vec<DnsRecord>, DnsError> {
         let response = self.client
-            .get(&self.zone_url(zone_id))
+            .get(self.zone_url(zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -394,11 +393,10 @@ impl DnsProvider for PowerDns {
         
         if let Some(rrsets) = pdns_zone.rrsets {
             for rrset in rrsets {
-                if let Some(filter_type) = record_type {
-                    if rrset.record_type != filter_type {
+                if let Some(filter_type) = record_type
+                    && rrset.record_type != filter_type {
                         continue;
                     }
-                }
 
                 if let Some(records) = rrset.records {
                     for (i, record) in records.iter().enumerate() {
@@ -420,7 +418,7 @@ impl DnsProvider for PowerDns {
         Ok(dns_records)
     }
 
-    async fn update_record(&self, record_id: &str, record: &DnsRecord) -> Result<(), DnsError> {
+    async fn update_record(&self, _record_id: &str, record: &DnsRecord) -> Result<(), DnsError> {
         // For PowerDNS, updating a record is the same as creating it (REPLACE changetype)
         self.create_record(record).await?;
         Ok(())
@@ -475,7 +473,7 @@ impl DnsProvider for PowerDns {
         };
 
         let response = self.client
-            .patch(&self.zone_url(zone_id))
+            .patch(self.zone_url(zone_id))
             .json(&zone_update)
             .send()
             .await
@@ -494,7 +492,7 @@ impl DnsProvider for PowerDns {
         if enabled {
             // Enable DNSSEC by creating keys
             let response = self.client
-                .post(&format!("{}/cryptokeys", self.zone_url(zone_id)))
+                .post(format!("{}/cryptokeys", self.zone_url(zone_id)))
                 .json(&serde_json::json!({
                     "keytype": "ksk",
                     "active": true,
@@ -508,7 +506,7 @@ impl DnsProvider for PowerDns {
         } else {
             // Disable DNSSEC by removing all keys
             let response = self.client
-                .get(&format!("{}/cryptokeys", self.zone_url(zone_id)))
+                .get(format!("{}/cryptokeys", self.zone_url(zone_id)))
                 .send()
                 .await
                 .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -518,7 +516,7 @@ impl DnsProvider for PowerDns {
             for key in keys {
                 if let Some(key_id) = key.id {
                     self.client
-                        .delete(&format!("{}/cryptokeys/{}", self.zone_url(zone_id), key_id))
+                        .delete(format!("{}/cryptokeys/{}", self.zone_url(zone_id), key_id))
                         .send()
                         .await
                         .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -531,7 +529,7 @@ impl DnsProvider for PowerDns {
 
     async fn get_dnssec_keys(&self, zone_id: &str) -> Result<Vec<DnssecKey>, DnsError> {
         let response = self.client
-            .get(&format!("{}/cryptokeys", self.zone_url(zone_id)))
+            .get(format!("{}/cryptokeys", self.zone_url(zone_id)))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -560,7 +558,7 @@ impl DnsProvider for PowerDns {
     async fn import_zone(&self, zone_id: &str, zone_file: &str) -> Result<(), DnsError> {
         // PowerDNS supports zone file import via the zones endpoint
         let response = self.client
-            .put(&format!("{}/zone", self.zone_url(zone_id)))
+            .put(format!("{}/zone", self.zone_url(zone_id)))
             .header("Content-Type", "text/plain")
             .body(zone_file.to_string())
             .send()
@@ -578,7 +576,7 @@ impl DnsProvider for PowerDns {
 
     async fn export_zone(&self, zone_id: &str) -> Result<String, DnsError> {
         let response = self.client
-            .get(&format!("{}/export", self.zone_url(zone_id)))
+            .get(format!("{}/export", self.zone_url(zone_id)))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;

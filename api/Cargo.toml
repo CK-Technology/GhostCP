@@ -28,6 +28,7 @@ config = { workspace = true }
 dotenvy = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
+base64 = { workspace = true }
 
 # TOTP dependencies
 base32 = { workspace = true }
@@ -36,12 +37,11 @@ sha1 = { workspace = true }
 qrcode = { workspace = true }
 
 # Additional API-specific dependencies
-clap = { version = "4.0", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 md5 = "0.7"
-lettre = "0.11"
-validator = { version = "0.16", features = ["derive"] }
-trust-dns-resolver = "0.23"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder"] }
 
 [dev-dependencies]
-axum-test = "14.0"
+axum-test = "17"
 tokio-test = "0.4"
+tempfile = "3"

@@ -1,13 +1,13 @@
-use leptos::*;
-use leptos_router::*;
-use crate::components::navigation::Navigation;
+use leptos::prelude::*;
+use leptos_router::components::A;
+use crate::components::navigation::Sidebar;
 use crate::components::footer::Footer;
 
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
     view! {
         <div class="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-            <Navigation/>
+            <Sidebar/>
 
             <main class="container mx-auto px-4 py-8">
                 {children()}
@@ -81,8 +81,7 @@ fn DashboardSidebar() -> impl IntoView {
                 view! {
                     <li>
                         <A href=path
-                           class="flex items-center px-4 py-2 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                           active_class="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                           attr:class="flex items-center px-4 py-2 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                             <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d=icon/>
                             </svg>
@@ -127,7 +126,7 @@ fn DashboardHeader() -> impl IntoView {
 }
 
 #[component]
-pub fn PageHeader(title: String, description: Option<String>) -> impl IntoView {
+pub fn PageHeader(#[prop(into)] title: String, #[prop(into, optional)] description: Option<String>) -> impl IntoView {
     view! {
         <div class="border-b border-gray-200 pb-5">
             <h1 class="text-3xl font-bold leading-tight tracking-tight text-gray-900">
@@ -142,12 +141,12 @@ pub fn PageHeader(title: String, description: Option<String>) -> impl IntoView {
 
 #[component]
 pub fn Card(
-    #[prop(optional)] title: Option<String>,
-    #[prop(optional)] class: Option<String>,
+    #[prop(into, optional)] title: Option<String>,
+    #[prop(into, optional)] class: Option<String>,
     children: Children,
 ) -> impl IntoView {
     let class = class.unwrap_or_default();
-    
+
     view! {
         <div class=format!("bg-white overflow-hidden shadow rounded-lg {}", class)>
             {title.map(|t| view! {
@@ -177,9 +176,9 @@ pub fn LoadingSpinner() -> impl IntoView {
 
 #[component]
 pub fn EmptyState(
-    title: String, 
+    title: String,
     description: String,
-    #[prop(optional)] action: Option<View>
+    #[prop(optional)] action: Option<AnyView>,
 ) -> impl IntoView {
     view! {
         <div class="text-center py-12">

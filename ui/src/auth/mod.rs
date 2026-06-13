@@ -1,29 +1,18 @@
 // Authentication management
-use leptos::*;
+use leptos::prelude::*;
 use crate::types::{User, UserRole};
-use std::rc::Rc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AuthContext {
     pub user: Option<User>,
     pub is_authenticated: bool,
     pub token: Option<String>,
 }
 
-impl Default for AuthContext {
-    fn default() -> Self {
-        Self {
-            user: None,
-            is_authenticated: false,
-            token: None,
-        }
-    }
-}
-
 pub type AuthState = RwSignal<AuthContext>;
 
 pub fn provide_auth_context() -> AuthState {
-    let auth_state = create_rw_signal(AuthContext::default());
+    let auth_state = RwSignal::new(AuthContext::default());
     provide_context(auth_state);
     auth_state
 }
@@ -44,7 +33,7 @@ pub fn current_user() -> Option<User> {
 
 pub fn has_role(role: UserRole) -> bool {
     let user = current_user();
-    user.map(|u| matches!((u.role, role), (UserRole::Admin, _) | (r1, r2) if r1 as u8 == r2 as u8))
+    user.map(|u| u.role == UserRole::Admin || u.role == role)
         .unwrap_or(false)
 }
 
@@ -84,19 +73,18 @@ pub fn init_auth() {
     let auth = use_auth();
     
     // Try to restore auth state from localStorage
-    if let Ok(Some(storage)) = window().local_storage() {
-        if let (Ok(Some(token)), Ok(Some(user_data))) = (
+    if let Ok(Some(storage)) = window().local_storage()
+        && let (Ok(Some(token)), Ok(Some(user_data))) = (
             storage.get_item("auth_token"),
-            storage.get_item("user_data")
-        ) {
-            if let Ok(user) = serde_json::from_str::<User>(&user_data) {
-                auth.set(AuthContext {
-                    user: Some(user),
-                    is_authenticated: true,
-                    token: Some(token),
-                });
-            }
-        }
+            storage.get_item("user_data"),
+        )
+        && let Ok(user) = serde_json::from_str::<User>(&user_data)
+    {
+        auth.set(AuthContext {
+            user: Some(user),
+            is_authenticated: true,
+            token: Some(token),
+        });
     }
 }
 
@@ -109,27 +97,28 @@ fn window() -> web_sys::Window {
 #[component]
 pub fn AuthGuard(
     #[prop(optional)] required_role: Option<UserRole>,
-    #[prop(optional)] fallback: Option<View>,
-    children: Children,
+    #[prop(optional, into)] fallback: Option<ViewFn>,
+    children: ChildrenFn,
 ) -> impl IntoView {
     let auth = use_auth();
-    
-    create_effect(move |_| {
+
+    Effect::new(move |_| {
         let auth_ctx = auth.get();
-        
+
         if !auth_ctx.is_authenticated {
             // Redirect to login
-            let navigate = leptos_router::use_navigate();
-            navigate("/login", Default::default()).ok();
+            let navigate = leptos_router::hooks::use_navigate();
+            navigate("/login", Default::default());
         }
     });
-    
+
     move || {
         let auth_ctx = auth.get();
-        
+
         if !auth_ctx.is_authenticated {
-            fallback.clone().unwrap_or_else(|| {
-                view! {
+            match fallback.as_ref() {
+                Some(f) => f.run(),
+                None => view! {
                     <div class="flex items-center justify-center min-h-screen">
                         <div class="text-center">
                             <h2 class="text-2xl font-semibold text-gray-900">
@@ -140,13 +129,13 @@ pub fn AuthGuard(
                             </p>
                         </div>
                     </div>
-                }.into_view()
-            })
+                }.into_any(),
+            }
         } else if let Some(role) = &required_role {
             if let Some(user) = &auth_ctx.user {
                 match (&user.role, role) {
-                    (UserRole::Admin, _) => children().into_view(), // Admin can access everything
-                    (user_role, required_role) if user_role == required_role => children().into_view(),
+                    (UserRole::Admin, _) => children().into_any(), // Admin can access everything
+                    (user_role, required_role) if user_role == required_role => children().into_any(),
                     _ => {
                         view! {
                             <div class="flex items-center justify-center min-h-screen">
@@ -159,12 +148,13 @@ pub fn AuthGuard(
                                     </p>
                                 </div>
                             </div>
-                        }.into_view()
+                        }.into_any()
                     }
                 }
             } else {
-                fallback.clone().unwrap_or_else(|| {
-                    view! {
+                match fallback.as_ref() {
+                    Some(f) => f.run(),
+                    None => view! {
                         <div class="flex items-center justify-center min-h-screen">
                             <div class="text-center">
                                 <h2 class="text-2xl font-semibold text-gray-900">
@@ -175,11 +165,11 @@ pub fn AuthGuard(
                                 </p>
                             </div>
                         </div>
-                    }.into_view()
-                })
+                    }.into_any(),
+                }
             }
         } else {
-            children().into_view()
+            children().into_any()
         }
     }
 }

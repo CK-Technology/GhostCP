@@ -1,16 +1,22 @@
-// Database management page
-use leptos::*;
+// Database management pages
+use leptos::prelude::*;
 
 #[component]
 pub fn DatabasesPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
             <h1>"Database Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"Database management functionality coming soon."</p>
-                </div>
-            </div>
+            <p>"Database management functionality coming soon."</p>
+        </div>
+    }
+}
+
+#[component]
+pub fn NewDatabasePage() -> impl IntoView {
+    view! {
+        <div class="container-fluid">
+            <h1>"Add Database"</h1>
+            <p>"Database creation form coming soon."</p>
         </div>
     }
 }

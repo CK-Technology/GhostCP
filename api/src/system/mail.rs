@@ -100,7 +100,7 @@ impl MailManager {
     pub async fn install_stalwart(&self) -> Result<()> {
         // Download and install Stalwart
         let output = Command::new("wget")
-            .args(&[
+            .args([
                 "-O",
                 "/tmp/stalwart.tar.gz",
                 "https://github.com/stalwartlabs/mail-server/releases/latest/download/stalwart-mail-linux-x86_64.tar.gz"
@@ -112,7 +112,7 @@ impl MailManager {
         }
 
         Command::new("tar")
-            .args(&["-xzf", "/tmp/stalwart.tar.gz", "-C", "/opt/"])
+            .args(["-xzf", "/tmp/stalwart.tar.gz", "-C", "/opt/"])
             .output()?;
 
         // Create systemd service
@@ -193,7 +193,7 @@ dsn = true
         
         // Generate RSA key pair
         Command::new("openssl")
-            .args(&[
+            .args([
                 "genrsa",
                 "-out",
                 &format!("/tmp/{}.{}.key", domain, selector),
@@ -203,7 +203,7 @@ dsn = true
 
         // Extract public key
         let output = Command::new("openssl")
-            .args(&[
+            .args([
                 "rsa",
                 "-in",
                 &format!("/tmp/{}.{}.key", domain, selector),
@@ -235,7 +235,7 @@ dsn = true
             dkim_selector: dkim_selector.clone(),
             dkim_private_key: dkim_private,
             dkim_public_key: dkim_public.clone(),
-            spf_record: format!("v=spf1 mx a include:spf.smtp2go.com ~all"),
+            spf_record: "v=spf1 mx a include:spf.smtp2go.com ~all".to_string(),
             dmarc_record: format!("v=DMARC1; p=quarantine; rua=mailto:dmarc@{}", domain),
             mx_records: vec![
                 MxRecord { priority: 10, hostname: format!("mail.{}", domain) },
@@ -276,7 +276,7 @@ dkim.private-key = """
         
         // Reload Stalwart
         Command::new("systemctl")
-            .args(&["reload", "stalwart"])
+            .args(["reload", "stalwart"])
             .output()?;
 
         Ok(())
@@ -392,7 +392,7 @@ smtp tcp://0.0.0.0:25 {{
     async fn create_maddy_account(&self, account: &MailAccount, password: &str) -> Result<()> {
         // Use maddyctl to create account
         let output = Command::new("maddyctl")
-            .args(&[
+            .args([
                 "creds",
                 "create",
                 &account.email,
@@ -408,7 +408,7 @@ smtp tcp://0.0.0.0:25 {{
 
         // Set quota
         Command::new("maddyctl")
-            .args(&[
+            .args([
                 "imap-acct",
                 "set-quota",
                 &account.email,
@@ -429,7 +429,7 @@ smtp tcp://0.0.0.0:25 {{
         match self.config.mail_server {
             MailServerType::Stalwart => {
                 let output = Command::new("stalwart-mail")
-                    .args(&["--config", &self.config.config_dir.join("stalwart.toml").to_string_lossy(), "--test"])
+                    .args(["--config", &self.config.config_dir.join("stalwart.toml").to_string_lossy(), "--test"])
                     .output()?;
 
                 if !output.status.success() {
@@ -439,7 +439,7 @@ smtp tcp://0.0.0.0:25 {{
             },
             MailServerType::Maddy => {
                 let output = Command::new("maddy")
-                    .args(&["-config", &self.config.config_dir.join("maddy.conf").to_string_lossy(), "-test"])
+                    .args(["-config", &self.config.config_dir.join("maddy.conf").to_string_lossy(), "-test"])
                     .output()?;
 
                 if !output.status.success() {
@@ -471,7 +471,7 @@ smtp tcp://0.0.0.0:25 {{
         };
 
         let output = Command::new("systemctl")
-            .args(&["is-active", service_name])
+            .args(["is-active", service_name])
             .output()?;
 
         let is_running = output.status.success() &&
@@ -506,7 +506,7 @@ smtp tcp://0.0.0.0:25 {{
             },
             MailServerType::Maddy => {
                 let output = Command::new("maddyctl")
-                    .args(&["queue", "list"])
+                    .args(["queue", "list"])
                     .output()?;
 
                 if output.status.success() {
@@ -527,7 +527,7 @@ smtp tcp://0.0.0.0:25 {{
                     } else {
                         // Count lines that look like queue entries
                         Ok(queue_output.lines()
-                            .filter(|line| line.chars().next().map_or(false, |c| c.is_ascii_alphanumeric()))
+                            .filter(|line| line.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()))
                             .count() as u32)
                     }
                 } else {

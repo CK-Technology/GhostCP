@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use sqlx::{Row, postgres::PgPool};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseManager {
@@ -59,6 +58,12 @@ pub enum DatabasePrivilege {
     All,
 }
 
+impl Default for DatabaseManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DatabaseManager {
     pub fn new() -> Self {
         Self {
@@ -101,7 +106,7 @@ impl DatabaseManager {
         );
 
         let output = Command::new("mysql")
-            .args(&["-e", &query])
+            .args(["-e", &query])
             .output()?;
 
         if !output.status.success() {
@@ -160,7 +165,7 @@ impl DatabaseManager {
         );
 
         let output = Command::new("mysql")
-            .args(&["-e", &create_query])
+            .args(["-e", &create_query])
             .output()?;
 
         if !output.status.success() {
@@ -174,7 +179,7 @@ impl DatabaseManager {
         );
 
         let output = Command::new("mysql")
-            .args(&["-e", &grant_query])
+            .args(["-e", &grant_query])
             .output()?;
 
         if !output.status.success() {
@@ -183,7 +188,7 @@ impl DatabaseManager {
 
         // Flush privileges
         Command::new("mysql")
-            .args(&["-e", "FLUSH PRIVILEGES"])
+            .args(["-e", "FLUSH PRIVILEGES"])
             .output()?;
 
         Ok(())
@@ -197,7 +202,7 @@ impl DatabaseManager {
     ) -> Result<()> {
         // Create user
         let output = Command::new("createuser")
-            .args(&[username, "--no-createdb", "--no-createrole", "--no-superuser"])
+            .args([username, "--no-createdb", "--no-createrole", "--no-superuser"])
             .output()?;
 
         if !output.status.success() {
@@ -207,7 +212,7 @@ impl DatabaseManager {
         // Set password
         let password_query = format!("ALTER USER {} PASSWORD '{}'", username, password);
         let output = Command::new("psql")
-            .args(&["-c", &password_query])
+            .args(["-c", &password_query])
             .output()?;
 
         if !output.status.success() {
@@ -217,7 +222,7 @@ impl DatabaseManager {
         // Grant database access
         let grant_query = format!("GRANT ALL PRIVILEGES ON DATABASE {} TO {}", database, username);
         Command::new("psql")
-            .args(&["-c", &grant_query])
+            .args(["-c", &grant_query])
             .output()?;
 
         Ok(())
@@ -229,7 +234,7 @@ impl DatabaseManager {
             DatabaseType::MySQL | DatabaseType::MariaDB => {
                 let query = format!("DROP DATABASE IF EXISTS `{}`", name);
                 let output = Command::new("mysql")
-                    .args(&["-e", &query])
+                    .args(["-e", &query])
                     .output()?;
 
                 if !output.status.success() {
@@ -262,7 +267,7 @@ impl DatabaseManager {
                 let host = host.unwrap_or("localhost");
                 let query = format!("DROP USER IF EXISTS '{}'@'{}'", username, host);
                 let output = Command::new("mysql")
-                    .args(&["-e", &query])
+                    .args(["-e", &query])
                     .output()?;
 
                 if !output.status.success() {
@@ -288,7 +293,7 @@ impl DatabaseManager {
         match db_type {
             DatabaseType::MySQL | DatabaseType::MariaDB => {
                 let output = Command::new("mysql")
-                    .args(&["-e", "SHOW DATABASES"])
+                    .args(["-e", "SHOW DATABASES"])
                     .output()?;
 
                 if !output.status.success() {
@@ -310,7 +315,7 @@ impl DatabaseManager {
             },
             DatabaseType::PostgreSQL => {
                 let output = Command::new("psql")
-                    .args(&["-l", "-t"])
+                    .args(["-l", "-t"])
                     .output()?;
 
                 if !output.status.success() {
@@ -322,7 +327,7 @@ impl DatabaseManager {
                     .lines()
                     .filter_map(|line| {
                         let parts: Vec<&str> = line.split('|').collect();
-                        if parts.len() > 0 {
+                        if !parts.is_empty() {
                             let name = parts[0].trim();
                             // Filter out system databases
                             if !["postgres", "template0", "template1"].contains(&name) {
@@ -351,7 +356,7 @@ impl DatabaseManager {
                 );
 
                 let output = Command::new("mysql")
-                    .args(&["-e", &query, "-s"])
+                    .args(["-e", &query, "-s"])
                     .output()?;
 
                 if !output.status.success() {
@@ -364,7 +369,7 @@ impl DatabaseManager {
             DatabaseType::PostgreSQL => {
                 let query = format!("SELECT pg_database_size('{}')", name);
                 let output = Command::new("psql")
-                    .args(&["-c", &query, "-t"])
+                    .args(["-c", &query, "-t"])
                     .output()?;
 
                 if !output.status.success() {
@@ -388,7 +393,7 @@ impl DatabaseManager {
         match db_type {
             DatabaseType::MySQL | DatabaseType::MariaDB => {
                 let output = Command::new("mysqldump")
-                    .args(&[
+                    .args([
                         "--single-transaction",
                         "--routines",
                         "--triggers",
@@ -404,7 +409,7 @@ impl DatabaseManager {
             },
             DatabaseType::PostgreSQL => {
                 let output = Command::new("pg_dump")
-                    .args(&[
+                    .args([
                         "-d", name,
                         "-f", output_path,
                         "--clean",
@@ -443,7 +448,7 @@ impl DatabaseManager {
             },
             DatabaseType::PostgreSQL => {
                 let output = Command::new("psql")
-                    .args(&["-d", name, "-f", backup_path])
+                    .args(["-d", name, "-f", backup_path])
                     .output()?;
 
                 if !output.status.success() {
@@ -478,7 +483,7 @@ impl DatabaseManager {
 
     async fn is_service_running(&self, service: &str) -> Result<bool> {
         let output = Command::new("systemctl")
-            .args(&["is-active", service])
+            .args(["is-active", service])
             .output()?;
 
         Ok(output.status.success())
@@ -486,7 +491,7 @@ impl DatabaseManager {
 
     async fn get_mysql_version(&self) -> Result<Option<String>> {
         let output = Command::new("mysql")
-            .args(&["-e", "SELECT VERSION()", "-s"])
+            .args(["-e", "SELECT VERSION()", "-s"])
             .output()?;
 
         if output.status.success() {
@@ -499,7 +504,7 @@ impl DatabaseManager {
 
     async fn get_postgresql_version(&self) -> Result<Option<String>> {
         let output = Command::new("psql")
-            .args(&["-c", "SELECT version()", "-t"])
+            .args(["-c", "SELECT version()", "-t"])
             .output()?;
 
         if output.status.success() {

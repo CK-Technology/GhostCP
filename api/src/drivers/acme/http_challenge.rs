@@ -165,7 +165,7 @@ impl HttpChallenge {
     pub fn create_challenge_routes() -> axum::Router {
         use axum::{extract::Path, response::Response, routing::get, Router};
 
-        async fn serve_challenge(Path(token): Path<String>) -> Response<String> {
+        async fn serve_challenge(Path(_token): Path<String>) -> Response<String> {
             // This would need access to the HttpChallenge instance
             // In a real implementation, you'd pass it through app state
             Response::builder()
@@ -175,7 +175,7 @@ impl HttpChallenge {
         }
 
         Router::new()
-            .route("/.well-known/acme-challenge/:token", get(serve_challenge))
+            .route("/.well-known/acme-challenge/{token}", get(serve_challenge))
     }
 }
 

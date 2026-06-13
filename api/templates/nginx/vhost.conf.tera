@@ -1,0 +1,96 @@
+# Managed by GhostCP - do not edit by hand
+# Standard PHP virtual host for {{ site.domain }}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {% for d in all_domains %}{{ d }} {% endfor %};
+
+    root {{ site.document_root }};
+    index index.php index.html index.htm;
+
+    access_log /var/log/nginx/{{ site.domain }}.access.log;
+    error_log  /var/log/nginx/{{ site.domain }}.error.log;
+
+{% if ssl_configured and site.ssl_force %}
+    # Redirect all HTTP traffic to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ site.document_root }};
+        allow all;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name {% for d in all_domains %}{{ d }} {% endfor %};
+
+    root {{ site.document_root }};
+    index index.php index.html index.htm;
+
+    access_log /var/log/nginx/{{ site.domain }}.access.log;
+    error_log  /var/log/nginx/{{ site.domain }}.error.log;
+
+    ssl_certificate     {{ site.ssl_cert_path }};
+    ssl_certificate_key {{ site.ssl_key_path }};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+{% if site.ssl_hsts %}
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+{% endif %}
+{% endif %}
+
+{% if site.basic_auth_enabled %}
+    auth_basic "Restricted";
+    auth_basic_user_file {{ site.basic_auth_file }};
+{% endif %}
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+{% if php_enabled_with_version %}
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_pass unix:{{ site.php_fpm_socket }};
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+{% if site.fastcgi_cache_enabled %}
+        fastcgi_cache GHOSTCP;
+        fastcgi_cache_valid 200 60m;
+{% endif %}
+    }
+{% endif %}
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+{% if site.static_cache_enabled %}
+    location ~* \.(?:jpg|jpeg|gif|png|webp|svg|ico|css|js|woff2?|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
+        access_log off;
+    }
+{% endif %}
+
+    location ^~ /.well-known/acme-challenge/ {
+        root {{ site.document_root }};
+        allow all;
+    }
+
+{% for inc in site.custom_includes %}
+    include {{ inc }};
+{% endfor %}
+{% if site.custom_config %}
+    {{ site.custom_config }}
+{% endif %}
+}

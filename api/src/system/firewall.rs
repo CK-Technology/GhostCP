@@ -2,8 +2,7 @@
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::collections::HashMap;
+use std::net::IpAddr;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -143,7 +142,7 @@ impl FirewallManager {
 
         for cmd in commands {
             let output = Command::new("sh")
-                .args(&["-c", cmd])
+                .args(["-c", cmd])
                 .output()?;
                 
             if !output.status.success() {
@@ -206,7 +205,7 @@ table inet filter {
         std::fs::write("/etc/nftables.conf", nft_config)?;
         
         let output = Command::new("nft")
-            .args(&["-f", "/etc/nftables.conf"])
+            .args(["-f", "/etc/nftables.conf"])
             .output()?;
 
         if !output.status.success() {
@@ -327,7 +326,7 @@ table inet filter {
         Ok(())
     }
 
-    pub async fn remove_rule(&self, rule_id: &Uuid) -> Result<()> {
+    pub async fn remove_rule(&self, _rule_id: &Uuid) -> Result<()> {
         // In a real implementation, you'd need to track rules by ID
         // For now, this is a placeholder
         Ok(())
@@ -370,7 +369,7 @@ table inet filter {
         match self.backend {
             FirewallBackend::Iptables => {
                 let output = Command::new("iptables")
-                    .args(&["-D", "INPUT", "-s", &ip.to_string(), "-j", "DROP"])
+                    .args(["-D", "INPUT", "-s", &ip.to_string(), "-j", "DROP"])
                     .output()?;
                     
                 if !output.status.success() {
@@ -380,8 +379,8 @@ table inet filter {
             FirewallBackend::Nftables => {
                 // Find and remove the rule
                 let cmd = format!("nft list ruleset | grep '{}'", ip);
-                let output = Command::new("sh")
-                    .args(&["-c", &cmd])
+                let _output = Command::new("sh")
+                    .args(["-c", &cmd])
                     .output()?;
                     
                 // Parse output and remove matching rules
@@ -401,7 +400,7 @@ table inet filter {
             
         if !output.status.success() {
             Command::new("apt-get")
-                .args(&["update", "&&", "apt-get", "install", "-y", "fail2ban"])
+                .args(["update", "&&", "apt-get", "install", "-y", "fail2ban"])
                 .output()?;
         }
         
@@ -410,7 +409,7 @@ table inet filter {
         
         // Start fail2ban
         Command::new("systemctl")
-            .args(&["enable", "--now", "fail2ban"])
+            .args(["enable", "--now", "fail2ban"])
             .output()?;
             
         Ok(())
@@ -495,7 +494,7 @@ table inet filter {
     // Get blocked IPs
     pub async fn get_blocked_ips(&self) -> Result<Vec<IpAddr>> {
         let output = Command::new("fail2ban-client")
-            .args(&["status"])
+            .args(["status"])
             .output()?;
             
         if !output.status.success() {
@@ -503,7 +502,7 @@ table inet filter {
         }
         
         let status = String::from_utf8_lossy(&output.stdout);
-        let mut blocked_ips = Vec::new();
+        let blocked_ips = Vec::new();
         
         // Parse fail2ban status to extract blocked IPs
         // This is a simplified implementation
@@ -548,7 +547,7 @@ table inet filter {
                 };
                 
                 let output = Command::new("iptables")
-                    .args(&["-D", "INPUT", "-p", proto, "--dport", &port.to_string(), "-j", "ACCEPT"])
+                    .args(["-D", "INPUT", "-p", proto, "--dport", &port.to_string(), "-j", "ACCEPT"])
                     .output()?;
                     
                 if !output.status.success() {
@@ -568,7 +567,7 @@ table inet filter {
         match self.backend {
             FirewallBackend::Iptables => {
                 let output = Command::new("iptables")
-                    .args(&["-L", "-n", "--line-numbers"])
+                    .args(["-L", "-n", "--line-numbers"])
                     .output()?;
                     
                 let rules_output = String::from_utf8_lossy(&output.stdout);
@@ -583,7 +582,7 @@ table inet filter {
             },
             FirewallBackend::Nftables => {
                 let output = Command::new("nft")
-                    .args(&["list", "ruleset"])
+                    .args(["list", "ruleset"])
                     .output()?;
                     
                 let rules_output = String::from_utf8_lossy(&output.stdout);
@@ -601,7 +600,7 @@ table inet filter {
 
     async fn is_fail2ban_active(&self) -> Result<bool> {
         let output = Command::new("systemctl")
-            .args(&["is-active", "fail2ban"])
+            .args(["is-active", "fail2ban"])
             .output()?;
             
         Ok(output.status.success())

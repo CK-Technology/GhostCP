@@ -9,8 +9,8 @@ fn test_user_model_validation() {
         email: "test@example.com".to_string(),
         password_hash: "hashed_password".to_string(),
         full_name: Some("Test User".to_string()),
-        role: "user".to_string(),
-        package_name: "basic".to_string(),
+        package_name: "default".to_string(),
+        role: UserRole::User,
         disk_quota: 1024,
         bandwidth_quota: 10240,
         web_domains_limit: 5,
@@ -25,22 +25,39 @@ fn test_user_model_validation() {
         mail_domains_count: 0,
         databases_count: 0,
         cron_jobs_count: 0,
+        shell: "/bin/bash".to_string(),
+        home_dir: Some("/home/testuser".to_string()),
+        language: "en".to_string(),
+        timezone: "UTC".to_string(),
         is_active: true,
         is_suspended: false,
-        shell: Some("/bin/bash".to_string()),
-        language: Some("en".to_string()),
-        timezone: Some("UTC".to_string()),
-        two_factor_enabled: false,
+        suspended_reason: None,
+        suspended_web: false,
+        suspended_dns: false,
+        suspended_mail: false,
+        suspended_db: false,
+        suspended_cron: false,
         two_factor_secret: None,
+        recovery_key: None,
+        login_disabled: false,
+        allowed_ips: None,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        last_login: None,
+        created_by: None,
     };
 
     assert_eq!(user.username, "testuser");
     assert_eq!(user.email, "test@example.com");
-    assert_eq!(user.role, "user");
+    assert!(matches!(user.role, UserRole::User));
     assert!(user.is_active);
     assert!(!user.is_suspended);
+
+    // Quota/limit helpers should reflect an unsuspended user within limits.
+    assert!(user.can_create_web_domain());
+    assert!(user.can_create_dns_zone());
+    assert!(user.is_within_disk_quota(512));
+    assert!(!user.has_admin_access());
 }
 
 #[test]

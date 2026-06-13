@@ -1,6 +1,7 @@
 // UI Components
 pub mod layout;
 pub mod navigation;
+pub mod footer;
 pub mod forms;
 pub mod tables;
 pub mod cards;

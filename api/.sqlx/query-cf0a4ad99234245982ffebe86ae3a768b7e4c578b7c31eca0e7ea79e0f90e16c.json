@@ -1,0 +1,106 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM system_metrics WHERE timestamp >= $1 ORDER BY timestamp ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "cpu_usage",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 2,
+        "name": "memory_total",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "memory_used",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "memory_available",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "disk_total",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "disk_used",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "disk_available",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "network_rx_bytes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "network_tx_bytes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "load_average_1m",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 11,
+        "name": "load_average_5m",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 12,
+        "name": "load_average_15m",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 13,
+        "name": "uptime_seconds",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 14,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cf0a4ad99234245982ffebe86ae3a768b7e4c578b7c31eca0e7ea79e0f90e16c"
+}

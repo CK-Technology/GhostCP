@@ -11,7 +11,7 @@ use argon2::password_hash::{SaltString, rand_core::OsRng};
 use uuid::Uuid;
 use crate::AppState;
 use crate::models::user::{User, UserRole};
-use crate::auth::totp::{TotpManager, TotpSecret};
+use crate::auth::totp::TotpManager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -34,13 +34,34 @@ pub struct UserDto {
     pub role: UserRole,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,  // user_id
     pub username: String,
     pub role: String,
     pub exp: i64,
     pub iat: i64,
+}
+
+// Allow handlers to take `Claims` directly as an extractor. The auth middleware
+// validates the JWT and inserts the decoded `Claims` into request extensions;
+// this pulls them back out for any protected handler.
+impl<S> axum::extract::FromRequestParts<S> for Claims
+where
+    S: Send + Sync,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<Claims>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,16 +90,10 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // Find user by username or email
-    let user = sqlx::query_as!(
-        User,
-        r#"
-        SELECT id, username, email, password_hash, role as "role: UserRole", 
-               status as "status: _", quota_mb, created_at, updated_at
-        FROM users 
-        WHERE username = $1 OR email = $1
-        "#,
-        payload.username
+    let user = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE username = $1 OR email = $1",
     )
+    .bind(&payload.username)
     .fetch_optional(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -102,8 +117,8 @@ pub async fn login(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some(totp) = totp_data {
-        if totp.enabled && totp.verified {
+    if let Some(totp) = totp_data
+        && totp.enabled && totp.verified {
             // 2FA is enabled - require TOTP code
             let totp_code = payload.totp_code.ok_or(StatusCode::UNAUTHORIZED)?;
             
@@ -124,7 +139,6 @@ pub async fn login(
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
-    }
 
     // Generate JWT token
     let now = Utc::now();
@@ -207,19 +221,17 @@ pub async fn register(
 
     // Create user
     let user_id = Uuid::new_v4();
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (id, username, email, password_hash, role, status, quota_mb)
-        VALUES ($1, $2, $3, $4, 'user', 'active', 10240)
-        RETURNING id, username, email, password_hash, role as "role: UserRole", 
-                  status as "status: _", quota_mb, created_at, updated_at
+        INSERT INTO users (id, username, email, password_hash, role)
+        VALUES ($1, $2, $3, $4, 'user')
+        RETURNING *
         "#,
-        user_id,
-        payload.username,
-        payload.email,
-        password_hash
     )
+    .bind(user_id)
+    .bind(&payload.username)
+    .bind(&payload.email)
+    .bind(&password_hash)
     .fetch_one(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -343,15 +355,10 @@ pub async fn me(
 ) -> Result<impl IntoResponse, StatusCode> {
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let user = sqlx::query_as!(
-        User,
-        r#"
-        SELECT id, username, email, password_hash, role as "role: UserRole", 
-               status as "status: _", quota_mb, created_at, updated_at
-        FROM users WHERE id = $1
-        "#,
-        user_id
+    let user = sqlx::query_as::<_, User>(
+        "SELECT * FROM users WHERE id = $1",
     )
+    .bind(user_id)
     .fetch_optional(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?

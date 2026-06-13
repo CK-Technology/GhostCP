@@ -4,12 +4,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     models::{DnsZone, DnsRecord, CreateDnsZoneRequest, CreateDnsRecordRequest},
-    drivers::dns::{DnsProvider, DnsError},
     AppState,
 };
 use super::{ApiError, ApiResult};
@@ -167,20 +165,6 @@ pub async fn list_dns_records(
     let limit = params.limit.unwrap_or(50).min(200);
     let offset = (page - 1) * limit;
 
-    let mut query = "SELECT * FROM dns_records WHERE zone_id = $1".to_string();
-    let mut query_params = vec![zone_id.to_string()];
-    let mut param_count = 2;
-    
-    if let Some(record_type) = &params.record_type {
-        query.push_str(&format!(" AND type = ${}", param_count));
-        query_params.push(record_type.clone());
-        param_count += 1;
-    }
-    
-    query.push_str(" ORDER BY name, type");
-    query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
-
-    // This is a simplified query - in practice you'd use a query builder
     let records = sqlx::query_as::<_, DnsRecord>(
         "SELECT * FROM dns_records WHERE zone_id = $1 ORDER BY name, record_type LIMIT $2 OFFSET $3"
     )
@@ -230,12 +214,12 @@ pub async fn create_dns_record(
         name: payload.name.clone(),
         record_type: payload.record_type.clone(),
         content: payload.value.clone(),
-        ttl: payload.ttl.unwrap_or(3600),
+        ttl: payload.ttl.unwrap_or(3600) as u32,
         priority: payload.priority.map(|p| p as u16),
         proxied: None,
     };
 
-    let record_id = provider.create_record(&provider_record).await
+    let _record_id = provider.create_record(&provider_record).await
         .map_err(|e| ApiError::BadRequest(format!("DNS provider error: {}", e)))?;
 
     // Create record in database

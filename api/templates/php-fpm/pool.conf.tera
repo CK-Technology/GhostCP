@@ -1,0 +1,33 @@
+; Managed by GhostCP - do not edit by hand
+; PHP-FPM pool for {{ site.domain }}
+
+[{{ pool_name }}]
+user = {{ site.user }}
+group = {{ site.group }}
+
+listen = {{ site.php_fpm_socket }}
+listen.owner = {{ site.user }}
+listen.group = {{ site.group }}
+listen.mode = 0660
+
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 4
+pm.max_requests = 500
+
+; Per-pool isolation
+chdir = {{ site.document_root }}
+catch_workers_output = yes
+
+php_admin_value[open_basedir] = {{ site.document_root }}:/tmp
+php_admin_value[upload_tmp_dir] = /tmp
+php_admin_value[session.save_path] = /tmp
+php_admin_value[error_log] = /var/log/php-fpm/{{ site.domain }}.error.log
+php_admin_flag[log_errors] = on
+
+php_value[memory_limit] = 256M
+php_value[upload_max_filesize] = 64M
+php_value[post_max_size] = 64M
+php_value[max_execution_time] = 120

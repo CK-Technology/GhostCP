@@ -1,16 +1,12 @@
-// stats management page
-use leptos::*;
+// Statistics page
+use leptos::prelude::*;
 
 #[component]
-pub fn statsPage() -> impl IntoView {
+pub fn StatsPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
-            <h1>"stats Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"stats management functionality coming soon."</p>
-                </div>
-            </div>
+            <h1>"Statistics"</h1>
+            <p>"Statistics functionality coming soon."</p>
         </div>
     }
 }

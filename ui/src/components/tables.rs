@@ -1,8 +1,8 @@
 // Table components
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
-pub fn data_table(children: Children) -> impl IntoView {
+pub fn DataTable(children: Children) -> impl IntoView {
     view! {
         <div class="table-responsive">
             <table class="table table-striped">
@@ -13,7 +13,7 @@ pub fn data_table(children: Children) -> impl IntoView {
 }
 
 #[component]
-pub fn table_header(children: Children) -> impl IntoView {
+pub fn TableHeader(children: Children) -> impl IntoView {
     view! {
         <thead>
             <tr>
@@ -24,7 +24,7 @@ pub fn table_header(children: Children) -> impl IntoView {
 }
 
 #[component]
-pub fn table_body(children: Children) -> impl IntoView {
+pub fn TableBody(children: Children) -> impl IntoView {
     view! {
         <tbody>
             {children()}

@@ -1,17 +1,17 @@
 // Modal components
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
-pub fn modal(
+pub fn Modal(
     #[prop(into)] title: String,
-    #[prop(into)] show: RwSignal<bool>,
+    show: RwSignal<bool>,
     children: Children,
 ) -> impl IntoView {
     view! {
         <div
             class="modal fade"
-            class:show={move || show.get()}
-            style:display={move || if show.get() { "block" } else { "none" }}
+            class:show=move || show.get()
+            style:display=move || if show.get() { "block" } else { "none" }
         >
             <div class="modal-dialog">
                 <div class="modal-content">

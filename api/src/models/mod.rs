@@ -9,6 +9,5 @@ pub mod backup;
 pub mod job;
 pub mod audit;
 
-pub use user::{User, CreateUserRequest, UpdateUserRequest, UserRole, LoginRequest, LoginResponse};
-pub use web_domain::{WebDomain, CreateWebDomainRequest, UpdateWebDomainRequest};
+pub use user::{User, CreateUserRequest, UpdateUserRequest, UserRole};
 pub use dns::{DnsZone, DnsRecord, CreateDnsZoneRequest, CreateDnsRecordRequest};

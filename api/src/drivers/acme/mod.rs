@@ -35,7 +35,7 @@ pub struct CertificateRequest {
     pub key_type: KeyType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChallengeType {
     Http01,
     Dns01,
@@ -156,7 +156,7 @@ impl AcmeManager {
             .ok_or_else(|| AcmeError::Configuration(format!("Provider {} not found", provider_name)))?;
 
         // Setup challenge handler
-        let challenge_handler = self.challenge_handlers.get(&request.challenge_type)
+        let _challenge_handler = self.challenge_handlers.get(&request.challenge_type)
             .ok_or_else(|| AcmeError::Configuration(format!("Challenge handler for {:?} not found", request.challenge_type)))?;
 
         // Validate domains first
@@ -181,7 +181,7 @@ impl AcmeManager {
     }
 
     pub async fn auto_renew_certificates(&self) -> Result<Vec<Certificate>, AcmeError> {
-        let mut renewed_certificates = Vec::new();
+        let renewed_certificates = Vec::new();
 
         // This would typically query the database for certificates that need renewal
         // For now, we'll return an empty vector

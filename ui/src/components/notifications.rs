@@ -1,17 +1,24 @@
 // Notification components
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
-pub fn alert(
+pub fn Alert(
     #[prop(into)] message: String,
     #[prop(into, optional)] alert_type: String,
     #[prop(optional)] dismissible: bool,
 ) -> impl IntoView {
-    let (show, set_show) = create_signal(true);
-    let alert_class = format!("alert alert-{}", if alert_type.is_empty() { "info".to_string() } else { alert_type });
+    let (show, set_show) = signal(true);
+    let alert_class = format!(
+        "alert alert-{}",
+        if alert_type.is_empty() { "info".to_string() } else { alert_type }
+    );
 
     view! {
-        <div class={alert_class} class:show={move || show.get()} style:display={move || if show.get() { "block" } else { "none" }}>
+        <div
+            class=alert_class
+            class:show=move || show.get()
+            style:display=move || if show.get() { "block" } else { "none" }
+        >
             {message}
             {dismissible.then(|| view! {
                 <button
@@ -25,15 +32,15 @@ pub fn alert(
 }
 
 #[component]
-pub fn toast(
+pub fn Toast(
     #[prop(into)] title: String,
     #[prop(into)] message: String,
-    #[prop(into)] show: RwSignal<bool>,
+    show: RwSignal<bool>,
 ) -> impl IntoView {
     view! {
         <div
             class="toast"
-            class:show={move || show.get()}
+            class:show=move || show.get()
         >
             <div class="toast-header">
                 <strong class="me-auto">{title}</strong>

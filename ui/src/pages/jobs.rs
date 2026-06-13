@@ -1,16 +1,12 @@
-// jobs management page
-use leptos::*;
+// System jobs page
+use leptos::prelude::*;
 
 #[component]
-pub fn jobsPage() -> impl IntoView {
+pub fn SystemJobsPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
-            <h1>"jobs Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"jobs management functionality coming soon."</p>
-                </div>
-            </div>
+            <h1>"System Jobs"</h1>
+            <p>"System jobs functionality coming soon."</p>
         </div>
     }
 }

@@ -1,16 +1,22 @@
-// cron management page
-use leptos::*;
+// Cron management pages
+use leptos::prelude::*;
 
 #[component]
-pub fn cronPage() -> impl IntoView {
+pub fn CronPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
-            <h1>"cron Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"cron management functionality coming soon."</p>
-                </div>
-            </div>
+            <h1>"Cron Jobs"</h1>
+            <p>"Cron management functionality coming soon."</p>
+        </div>
+    }
+}
+
+#[component]
+pub fn NewCronJobPage() -> impl IntoView {
+    view! {
+        <div class="container-fluid">
+            <h1>"Add Cron Job"</h1>
+            <p>"Cron job creation form coming soon."</p>
         </div>
     }
 }

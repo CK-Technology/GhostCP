@@ -1,7 +1,6 @@
 // API client for interacting with GhostCP backend
 use crate::types::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[cfg(feature = "ssr")]
 use reqwest;
@@ -188,7 +187,7 @@ impl ApiClient {
 }
 
 // Error types
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ApiError {
     #[cfg(feature = "ssr")]
     Network(reqwest::Error),
@@ -244,16 +243,16 @@ pub struct RequestCertificateRequest {
 }
 
 // Global API client instance
-static mut API_CLIENT: Option<ApiClient> = None;
+use std::sync::OnceLock;
+
+static API_CLIENT: OnceLock<ApiClient> = OnceLock::new();
 
 pub fn init_api_client(base_url: String) {
-    unsafe {
-        API_CLIENT = Some(ApiClient::new(base_url));
-    }
+    let _ = API_CLIENT.set(ApiClient::new(base_url));
 }
 
 pub fn api_client() -> &'static ApiClient {
-    unsafe {
-        API_CLIENT.as_ref().expect("API client not initialized. Call init_api_client() first.")
-    }
+    API_CLIENT
+        .get()
+        .expect("API client not initialized. Call init_api_client() first.")
 }

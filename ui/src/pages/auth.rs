@@ -1,37 +1,38 @@
-use leptos::*;
-use leptos_router::*;
+use leptos::prelude::*;
+use leptos_router::hooks::use_navigate;
 use crate::components::layout::Card;
 
 #[component]
 pub fn LoginPage() -> impl IntoView {
-    let (email, set_email) = create_signal(String::new());
-    let (password, set_password) = create_signal(String::new());
-    let (loading, set_loading) = create_signal(false);
-    let (error, set_error) = create_signal(None::<String>);
-    
+    let (email, set_email) = signal(String::new());
+    let (password, set_password) = signal(String::new());
+    let (loading, set_loading) = signal(false);
+    let (error, set_error) = signal(None::<String>);
+
     let navigate = use_navigate();
-    
-    let login = create_action(move |_: &()| {
+
+    let login = Action::new_local(move |_: &()| {
+        let navigate = navigate.clone();
         async move {
-            set_loading(true);
-            set_error(None);
-            
+            set_loading.set(true);
+            set_error.set(None);
+
             // TODO: Implement actual authentication
             // For now, simulate API call
             gloo_timers::future::TimeoutFuture::new(1000).await;
-            
+
             if email.get() == "admin@ghostcp.com" && password.get() == "password" {
                 // Success - redirect to dashboard
-                navigate("/dashboard", Default::default()).ok();
+                navigate("/dashboard", Default::default());
             } else {
-                set_error(Some("Invalid credentials".to_string()));
+                set_error.set(Some("Invalid credentials".to_string()));
             }
-            
-            set_loading(false);
+
+            set_loading.set(false);
         }
     });
-    
-    let on_submit = move |ev: ev::SubmitEvent| {
+
+    let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         login.dispatch(());
     };
@@ -59,8 +60,8 @@ pub fn LoginPage() -> impl IntoView {
                                 required
                                 class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                                 placeholder="Email address"
-                                prop:value=email
-                                on:input=move |ev| set_email(event_target_value(&ev))
+                                prop:value=move || email.get()
+                                on:input=move |ev| set_email.set(event_target_value(&ev))
                             />
                         </div>
                         
@@ -75,8 +76,8 @@ pub fn LoginPage() -> impl IntoView {
                                 required
                                 class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                                 placeholder="Password"
-                                prop:value=password
-                                on:input=move |ev| set_password(event_target_value(&ev))
+                                prop:value=move || password.get()
+                                on:input=move |ev| set_password.set(event_target_value(&ev))
                             />
                         </div>
                         
@@ -99,7 +100,7 @@ pub fn LoginPage() -> impl IntoView {
                                 class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {move || if loading.get() {
-                                    view! { 
+                                    view! {
                                         <span class="flex items-center">
                                             <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -107,9 +108,9 @@ pub fn LoginPage() -> impl IntoView {
                                             </svg>
                                             "Signing in..."
                                         </span>
-                                    }
+                                    }.into_any()
                                 } else {
-                                    view! { "Sign in" }
+                                    view! { "Sign in" }.into_any()
                                 }}
                             </button>
                         </div>

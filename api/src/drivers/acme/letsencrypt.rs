@@ -1,5 +1,6 @@
-use super::{AcmeError, AcmeProvider, AcmeAccount, Certificate, CertificateRequest, Challenge, ChallengeStatus, ChallengeType};
+use super::{AcmeError, AcmeProvider, AcmeAccount, Certificate, CertificateRequest, Challenge, ChallengeType};
 use async_trait::async_trait;
+use base64::Engine as _;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -197,7 +198,8 @@ impl LetsEncryptProvider {
         let nonce = self.get_nonce().await?;
 
         let finalize_request = serde_json::json!({
-            "csr": base64::encode(csr)
+            // RFC 8555: CSR is base64url-encoded (no padding).
+            "csr": base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(csr)
         });
 
         let response = self.client

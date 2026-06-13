@@ -1,8 +1,8 @@
 // Form components
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
-pub fn form_group(children: Children) -> impl IntoView {
+pub fn FormGroup(children: Children) -> impl IntoView {
     view! {
         <div class="form-group">
             {children()}
@@ -11,24 +11,25 @@ pub fn form_group(children: Children) -> impl IntoView {
 }
 
 #[component]
-pub fn text_input(
+pub fn TextInput(
     #[prop(into)] label: String,
     #[prop(into)] name: String,
-    #[prop(into)] value: RwSignal<String>,
+    value: RwSignal<String>,
     #[prop(optional)] placeholder: Option<String>,
     #[prop(optional)] required: bool,
 ) -> impl IntoView {
+    let input_id = name.clone();
     view! {
         <div class="mb-3">
-            <label for={name.clone()} class="form-label">{label}</label>
+            <label for=input_id.clone() class="form-label">{label}</label>
             <input
                 type="text"
                 class="form-control"
-                id={name.clone()}
-                name={name}
-                placeholder={placeholder.unwrap_or_default()}
-                required={required}
-                prop:value={move || value.get()}
+                id=input_id
+                name=name
+                placeholder=placeholder.unwrap_or_default()
+                required=required
+                prop:value=move || value.get()
                 on:input=move |ev| {
                     value.set(event_target_value(&ev));
                 }

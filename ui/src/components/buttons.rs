@@ -1,8 +1,8 @@
 // Button components
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
-pub fn primary_button(
+pub fn PrimaryButton(
     #[prop(into)] text: String,
     #[prop(optional)] onclick: Option<Box<dyn Fn() + 'static>>,
     #[prop(optional)] disabled: bool,
@@ -11,7 +11,7 @@ pub fn primary_button(
         <button
             type="button"
             class="btn btn-primary"
-            disabled={disabled}
+            disabled=disabled
             on:click=move |_| {
                 if let Some(ref handler) = onclick {
                     handler();
@@ -24,7 +24,7 @@ pub fn primary_button(
 }
 
 #[component]
-pub fn danger_button(
+pub fn DangerButton(
     #[prop(into)] text: String,
     #[prop(optional)] onclick: Option<Box<dyn Fn() + 'static>>,
     #[prop(optional)] disabled: bool,
@@ -33,7 +33,7 @@ pub fn danger_button(
         <button
             type="button"
             class="btn btn-danger"
-            disabled={disabled}
+            disabled=disabled
             on:click=move |_| {
                 if let Some(ref handler) = onclick {
                     handler();

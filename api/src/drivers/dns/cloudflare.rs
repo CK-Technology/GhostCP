@@ -85,7 +85,7 @@ impl CloudflareDns {
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {}", api_token))
-                .map_err(|e| DnsError::AuthenticationFailed)?,
+                .map_err(|_e| DnsError::AuthenticationFailed)?,
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
@@ -140,7 +140,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn health_check(&self) -> Result<(), DnsError> {
         let response = self.client
-            .get(&format!("{}/user/tokens/verify", self.base_url))
+            .get(format!("{}/user/tokens/verify", self.base_url))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -164,7 +164,7 @@ impl DnsProvider for CloudflareDns {
         };
 
         let response = self.client
-            .post(&format!("{}/zones", self.base_url))
+            .post(format!("{}/zones", self.base_url))
             .json(&create_request)
             .send()
             .await
@@ -183,7 +183,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn get_zone(&self, zone_id: &str) -> Result<DnsZoneInfo, DnsError> {
         let response = self.client
-            .get(&format!("{}/zones/{}", self.base_url, zone_id))
+            .get(format!("{}/zones/{}", self.base_url, zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -201,7 +201,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn list_zones(&self) -> Result<Vec<DnsZoneInfo>, DnsError> {
         let response = self.client
-            .get(&format!("{}/zones", self.base_url))
+            .get(format!("{}/zones", self.base_url))
             .query(&[("per_page", "50")])
             .send()
             .await
@@ -218,13 +218,13 @@ impl DnsProvider for CloudflareDns {
         }).collect())
     }
 
-    async fn update_zone(&self, zone_id: &str, zone: &DnsZone) -> Result<(), DnsError> {
+    async fn update_zone(&self, zone_id: &str, _zone: &DnsZone) -> Result<(), DnsError> {
         // Cloudflare doesn't allow updating zone name, only settings
         let mut update_data = HashMap::new();
         update_data.insert("paused", false);
         
         let response = self.client
-            .patch(&format!("{}/zones/{}", self.base_url, zone_id))
+            .patch(format!("{}/zones/{}", self.base_url, zone_id))
             .json(&update_data)
             .send()
             .await
@@ -236,7 +236,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn delete_zone(&self, zone_id: &str) -> Result<(), DnsError> {
         let response = self.client
-            .delete(&format!("{}/zones/{}", self.base_url, zone_id))
+            .delete(format!("{}/zones/{}", self.base_url, zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -260,7 +260,7 @@ impl DnsProvider for CloudflareDns {
         };
 
         let response = self.client
-            .post(&format!("{}/zones/{}/dns_records", self.base_url, record.zone_id))
+            .post(format!("{}/zones/{}/dns_records", self.base_url, record.zone_id))
             .json(&cf_record)
             .send()
             .await
@@ -272,7 +272,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn get_record(&self, zone_id: &str, record_id: &str) -> Result<DnsRecord, DnsError> {
         let response = self.client
-            .get(&format!("{}/zones/{}/dns_records/{}", self.base_url, zone_id, record_id))
+            .get(format!("{}/zones/{}/dns_records/{}", self.base_url, zone_id, record_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -298,7 +298,7 @@ impl DnsProvider for CloudflareDns {
         }
 
         let response = self.client
-            .get(&format!("{}/zones/{}/dns_records", self.base_url, zone_id))
+            .get(format!("{}/zones/{}/dns_records", self.base_url, zone_id))
             .query(&query_params)
             .send()
             .await
@@ -333,7 +333,7 @@ impl DnsProvider for CloudflareDns {
         };
 
         let response = self.client
-            .put(&format!("{}/zones/{}/dns_records/{}", self.base_url, record.zone_id, record_id))
+            .put(format!("{}/zones/{}/dns_records/{}", self.base_url, record.zone_id, record_id))
             .json(&cf_record)
             .send()
             .await
@@ -345,7 +345,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn delete_record(&self, zone_id: &str, record_id: &str) -> Result<(), DnsError> {
         let response = self.client
-            .delete(&format!("{}/zones/{}/dns_records/{}", self.base_url, zone_id, record_id))
+            .delete(format!("{}/zones/{}/dns_records/{}", self.base_url, zone_id, record_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -357,7 +357,7 @@ impl DnsProvider for CloudflareDns {
     async fn set_dnssec(&self, zone_id: &str, enabled: bool) -> Result<(), DnsError> {
         let endpoint = if enabled { "enable" } else { "disable" };
         let response = self.client
-            .patch(&format!("{}/zones/{}/dnssec/{}", self.base_url, zone_id, endpoint))
+            .patch(format!("{}/zones/{}/dnssec/{}", self.base_url, zone_id, endpoint))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -368,7 +368,7 @@ impl DnsProvider for CloudflareDns {
 
     async fn get_dnssec_keys(&self, zone_id: &str) -> Result<Vec<DnssecKey>, DnsError> {
         let response = self.client
-            .get(&format!("{}/zones/{}/dnssec", self.base_url, zone_id))
+            .get(format!("{}/zones/{}/dnssec", self.base_url, zone_id))
             .send()
             .await
             .map_err(|e| DnsError::NetworkError(e.to_string()))?;
@@ -385,7 +385,7 @@ impl DnsProvider for CloudflareDns {
         }])
     }
 
-    async fn import_zone(&self, zone_id: &str, zone_file: &str) -> Result<(), DnsError> {
+    async fn import_zone(&self, _zone_id: &str, _zone_file: &str) -> Result<(), DnsError> {
         // Cloudflare doesn't have a direct zone file import, 
         // would need to parse and create records individually
         Err(DnsError::ApiError("Zone file import not supported by Cloudflare API".to_string()))

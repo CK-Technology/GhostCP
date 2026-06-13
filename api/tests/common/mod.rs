@@ -1,9 +1,12 @@
-use ghostcp_api::{AppState, config::Config};
-use sqlx::{PgPool, Executor};
-use std::collections::HashMap;
+use ghostcp_api::{config::Config, initialize_dns_providers, AppState};
+use sqlx::{Executor, PgPool};
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// Shared fixture for integration tests that need a live database and a fully
+/// constructed `AppState`. Tests using this require a reachable PostgreSQL
+/// instance via `DATABASE_URL`, so they are gated behind `#[ignore]` and run
+/// explicitly with `cargo test -- --ignored`.
 pub struct TestContext {
     pub app_state: AppState,
     pub db: PgPool,
@@ -13,27 +16,29 @@ pub struct TestContext {
 impl TestContext {
     pub async fn new() -> Self {
         let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://ghostcp_test:test_password@localhost:5433/ghostcp_test".to_string());
+            .unwrap_or_else(|_| "postgresql://ghostcp:password@localhost/ghostcp".to_string());
 
         let db = PgPool::connect(&database_url)
             .await
             .expect("Failed to connect to test database");
 
-        // Run migrations
+        // Ensure the schema is present.
         sqlx::migrate!("./migrations")
             .run(&db)
             .await
             .expect("Failed to run migrations");
 
-        let config = Config {
-            database_url: database_url.clone(),
-            jwt_secret: "test_secret".to_string(),
-            redis_url: "redis://localhost:6380".to_string(),
-            bind_address: "127.0.0.1:8080".to_string(),
-            ..Default::default()
-        };
+        // SAFETY: tests are single-threaded per process for env mutation here.
+        unsafe {
+            std::env::set_var("DATABASE_URL", &database_url);
+        }
+        let config = Config::from_env().expect("Failed to build config from env");
 
-        let dns_providers = Arc::new(HashMap::new());
+        let dns_providers = Arc::new(
+            initialize_dns_providers(&config)
+                .await
+                .expect("Failed to initialize DNS providers"),
+        );
 
         let app_state = AppState {
             db: db.clone(),
@@ -41,7 +46,6 @@ impl TestContext {
             dns_providers,
         };
 
-        // Create test user
         let test_user_id = create_test_user(&db).await;
 
         Self {
@@ -52,22 +56,25 @@ impl TestContext {
     }
 
     pub async fn cleanup(&self) {
-        // Clean up test data
-        let _ = self.db.execute("TRUNCATE users, web_domains, dns_zones, dns_records, mail_domains, databases CASCADE").await;
+        let _ = self
+            .db
+            .execute("TRUNCATE users, web_domains, dns_zones, dns_records, mail_domains, databases CASCADE")
+            .await;
     }
 }
 
 async fn create_test_user(db: &PgPool) -> Uuid {
     let user_id = Uuid::new_v4();
 
-    sqlx::query!(
-        "INSERT INTO users (id, username, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)",
-        user_id,
-        "testuser",
-        "test@example.com",
-        "$argon2id$v=19$m=65536,t=3,p=4$test_salt$test_hash",
-        "user"
+    sqlx::query(
+        "INSERT INTO users (id, username, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (username) DO NOTHING",
     )
+    .bind(user_id)
+    .bind("testuser")
+    .bind("test@example.com")
+    .bind("$argon2id$v=19$m=65536,t=3,p=4$test_salt$test_hash")
+    .bind("user")
     .execute(db)
     .await
     .expect("Failed to create test user");
@@ -77,16 +84,13 @@ async fn create_test_user(db: &PgPool) -> Uuid {
 
 #[macro_export]
 macro_rules! test_with_context {
-    ($test_name:ident, $test_fn:expr) => {
+    ($test_name:ident, $ctx:ident, $body:block) => {
         #[tokio::test]
+        #[ignore = "requires a reachable PostgreSQL instance (DATABASE_URL)"]
         async fn $test_name() {
-            let ctx = crate::common::TestContext::new().await;
-
-            let result = $test_fn(&ctx).await;
-
-            ctx.cleanup().await;
-
-            result
+            let $ctx = $crate::common::TestContext::new().await;
+            $body
+            $ctx.cleanup().await;
         }
     };
 }

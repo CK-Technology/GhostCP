@@ -5,7 +5,6 @@ pub mod local;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use uuid::Uuid;
 use crate::models::{DnsZone as DbDnsZone, DnsRecord as DbDnsRecord};
 
 #[derive(Debug, Error)]

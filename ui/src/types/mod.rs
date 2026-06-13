@@ -3,10 +3,6 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-// Re-export common types
-pub use chrono::{DateTime, Utc};
-pub use uuid::Uuid;
-
 // User types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -19,7 +15,7 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserRole {
     Admin,
     User,

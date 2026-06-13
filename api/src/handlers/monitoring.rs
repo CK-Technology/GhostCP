@@ -6,10 +6,9 @@ use axum::{
     Extension,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use crate::AppState;
 use crate::handlers::auth::Claims;
-use crate::system::monitoring::{SystemMonitor, SystemMetrics, FlatSystemMetrics, ServiceStatus};
+use crate::system::monitoring::{SystemMonitor, FlatSystemMetrics, ServiceStatus};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MonitoringQuery {
@@ -60,10 +59,9 @@ pub async fn get_metrics_history(
         chrono::Utc::now().timestamp() - 3600 // Default: last hour
     });
     
-    let historical_metrics = sqlx::query_as!(
-        FlatSystemMetrics,
+    let historical_metrics = sqlx::query!(
         r#"
-        SELECT 
+        SELECT
             cpu_usage,
             memory_total,
             memory_used,
@@ -78,15 +76,33 @@ pub async fn get_metrics_history(
             load_average_15m,
             uptime_seconds,
             timestamp
-        FROM system_metrics 
-        WHERE timestamp >= $1 
+        FROM system_metrics
+        WHERE timestamp >= $1
         ORDER BY timestamp ASC
         "#,
         chrono::DateTime::from_timestamp(since_time, 0).unwrap_or_default()
     )
     .fetch_all(&state.db)
     .await
-    .unwrap_or_default();
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| FlatSystemMetrics {
+        cpu_usage: r.cpu_usage,
+        memory_total: r.memory_total as u64,
+        memory_used: r.memory_used as u64,
+        memory_available: r.memory_available as u64,
+        disk_total: r.disk_total as u64,
+        disk_used: r.disk_used as u64,
+        disk_available: r.disk_available as u64,
+        network_rx_bytes: r.network_rx_bytes as u64,
+        network_tx_bytes: r.network_tx_bytes as u64,
+        load_average_1m: r.load_average_1m,
+        load_average_5m: r.load_average_5m,
+        load_average_15m: r.load_average_15m,
+        uptime_seconds: r.uptime_seconds as u64,
+        timestamp: r.timestamp,
+    })
+    .collect();
     
     // Get service statuses
     let services = monitor.get_service_statuses(&[
@@ -136,13 +152,21 @@ pub async fn get_service_status(
     .await
     .unwrap_or_default()
     .into_iter()
-    .map(|row| ServiceStatus {
-        name: row.name,
-        status: row.status,
-        memory_usage: row.memory_usage.map(|m| m as u64),
-        cpu_usage: row.cpu_usage,
-        pid: row.pid.map(|p| p as u32),
-        timestamp: row.timestamp,
+    .map(|row| {
+        let active = row.status == "active";
+        let memory_usage = row.memory_usage.map(|m| m as u64);
+        ServiceStatus {
+            name: row.name,
+            status: row.status,
+            active,
+            enabled: false,
+            memory_usage_mb: memory_usage,
+            cpu_usage_percent: row.cpu_usage,
+            memory_usage,
+            cpu_usage: row.cpu_usage,
+            pid: row.pid.map(|p| p as u32),
+            timestamp: row.timestamp,
+        }
     })
     .collect();
     

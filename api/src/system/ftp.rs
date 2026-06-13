@@ -1,5 +1,5 @@
 // FTP server management (vsftpd/ProFTPD integration)
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::fs;
@@ -66,7 +66,7 @@ impl FtpManager {
     async fn install_vsftpd(&self) -> Result<()> {
         // Install vsftpd
         Command::new("apt-get")
-            .args(&["update", "&&", "apt-get", "install", "-y", "vsftpd"])
+            .args(["update", "&&", "apt-get", "install", "-y", "vsftpd"])
             .output()?;
 
         // Create secure configuration
@@ -124,7 +124,7 @@ xferlog_file=/var/log/vsftpd.log
 
         // Enable and start service
         Command::new("systemctl")
-            .args(&["enable", "--now", "vsftpd"])
+            .args(["enable", "--now", "vsftpd"])
             .output()?;
 
         Ok(())
@@ -133,7 +133,7 @@ xferlog_file=/var/log/vsftpd.log
     async fn install_proftpd(&self) -> Result<()> {
         // Install ProFTPD
         Command::new("apt-get")
-            .args(&["update", "&&", "apt-get", "install", "-y", "proftpd-basic"])
+            .args(["update", "&&", "apt-get", "install", "-y", "proftpd-basic"])
             .output()?;
 
         let config = r#"# GhostCP ProFTPD Configuration
@@ -183,7 +183,7 @@ PassivePorts 49152 65534
 
         // Enable and start service
         Command::new("systemctl")
-            .args(&["enable", "--now", "proftpd"])
+            .args(["enable", "--now", "proftpd"])
             .output()?;
 
         Ok(())
@@ -199,8 +199,8 @@ PassivePorts 49152 65534
 
     async fn create_vsftpd_user(&self, user: &FtpUser, password: &str) -> Result<()> {
         // Create system user (if not exists)
-        let output = Command::new("useradd")
-            .args(&[
+        let _output = Command::new("useradd")
+            .args([
                 "-d", &user.home_directory,
                 "-s", "/sbin/nologin",
                 &user.username,
@@ -219,7 +219,7 @@ PassivePorts 49152 65534
         
         // Set ownership
         Command::new("chown")
-            .args(&[
+            .args([
                 &format!("{}:{}", user.username, user.username),
                 &user.home_directory,
             ])
@@ -233,7 +233,7 @@ PassivePorts 49152 65534
             config.push_str("write_enable=NO\n");
         }
         
-        if let Some(quota) = user.quota_mb {
+        if let Some(_quota) = user.quota_mb {
             // Note: vsftpd doesn't have built-in quota support
             // You'd need to implement this with filesystem quotas
         }
@@ -256,7 +256,7 @@ PassivePorts 49152 65534
 
         // Reload vsftpd
         Command::new("systemctl")
-            .args(&["reload", "vsftpd"])
+            .args(["reload", "vsftpd"])
             .output()?;
 
         Ok(())
@@ -265,7 +265,7 @@ PassivePorts 49152 65534
     async fn create_proftpd_user(&self, user: &FtpUser, password: &str) -> Result<()> {
         // Hash password for ProFTPD
         let output = Command::new("openssl")
-            .args(&["passwd", "-1", password])
+            .args(["passwd", "-1", password])
             .output()?;
 
         let hashed_password = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -293,12 +293,12 @@ PassivePorts 49152 65534
 
         // Set ownership
         Command::new("chown")
-            .args(&["-R", &user.username, &user.home_directory])
+            .args(["-R", &user.username, &user.home_directory])
             .output()?;
 
         // Reload ProFTPD
         Command::new("systemctl")
-            .args(&["reload", "proftpd"])
+            .args(["reload", "proftpd"])
             .output()?;
 
         Ok(())
@@ -324,12 +324,12 @@ PassivePorts 49152 65534
 
                 // Remove system user
                 Command::new("userdel")
-                    .args(&["-r", username])
+                    .args(["-r", username])
                     .output()?;
 
                 // Reload vsftpd
                 Command::new("systemctl")
-                    .args(&["reload", "vsftpd"])
+                    .args(["reload", "vsftpd"])
                     .output()?;
             },
             FtpServerType::ProFtpd => {
@@ -351,7 +351,7 @@ PassivePorts 49152 65534
 
                 // Reload ProFTPD
                 Command::new("systemctl")
-                    .args(&["reload", "proftpd"])
+                    .args(["reload", "proftpd"])
                     .output()?;
             }
         }
@@ -384,7 +384,7 @@ PassivePorts 49152 65534
         };
 
         let output = Command::new("systemctl")
-            .args(&["is-active", service_name])
+            .args(["is-active", service_name])
             .output()?;
 
         let is_running = output.status.success();
@@ -403,12 +403,12 @@ PassivePorts 49152 65534
     async fn get_active_connections(&self) -> Result<u32> {
         // Check for active FTP connections
         let output = Command::new("netstat")
-            .args(&["-an", "|", "grep", ":21", "|", "grep", "ESTABLISHED", "|", "wc", "-l"])
+            .args(["-an", "|", "grep", ":21", "|", "grep", "ESTABLISHED", "|", "wc", "-l"])
             .output()?;
 
         if output.status.success() {
-            let count_str = String::from_utf8_lossy(&output.stdout).trim();
-            Ok(count_str.parse().unwrap_or(0))
+            let count_str = String::from_utf8_lossy(&output.stdout);
+            Ok(count_str.trim().parse().unwrap_or(0))
         } else {
             Ok(0)
         }
@@ -456,7 +456,7 @@ PassivePorts 49152 65534
             FtpServerType::ProFtpd => {
                 // Hash the new password
                 let output = Command::new("openssl")
-                    .args(&["passwd", "-1", new_password])
+                    .args(["passwd", "-1", new_password])
                     .output()?;
 
                 let hashed_password = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -490,7 +490,7 @@ PassivePorts 49152 65534
         };
 
         Command::new("systemctl")
-            .args(&["reload", service_name])
+            .args(["reload", service_name])
             .output()?;
 
         Ok(())

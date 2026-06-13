@@ -1,0 +1,49 @@
+# GhostCP development / test stack.
+#
+# Host networking is used so the API, Postgres, and any host services share
+# localhost — this avoids the DNS/connectivity issues of bridge networking on
+# our dev workstation. Services reach each other on 127.0.0.1, not by name.
+#
+#   docker compose -f docker/compose.yml up
+#
+# Production does NOT use this. GhostCP is a host-level control panel installed
+# via script + systemd (see docs/deployment/).
+
+services:
+  postgres:
+    image: postgres:16
+    network_mode: host
+    environment:
+      POSTGRES_USER: ghostcp
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: ghostcp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ghostcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      network: host
+    network_mode: host
+    environment:
+      DATABASE_URL: postgresql://ghostcp:password@localhost/ghostcp
+      RUST_LOG: ghostcp_api=debug,tower_http=debug
+    volumes:
+      - ../api:/app/api
+      - ../ui:/app/ui
+      - ../templates:/app/templates
+      - cargo_target:/app/target
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["sh", "-c", "wait-for-postgres && cargo watch -w api/src -x 'run -p ghostcp-api'"]
+
+volumes:
+  postgres_data:
+  cargo_target:

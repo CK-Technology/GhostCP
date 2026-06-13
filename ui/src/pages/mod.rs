@@ -1,7 +1,6 @@
 // Page components
-use leptos::*;
-use leptos_router::*;
-use crate::components::layout::{PageHeader, Card, LoadingSpinner, EmptyState};
+use leptos::prelude::*;
+use leptos_router::hooks::use_navigate;
 
 pub mod auth;
 pub mod dashboard;
@@ -37,11 +36,11 @@ pub use stats::*;
 #[component]
 pub fn HomePage() -> impl IntoView {
     let navigate = use_navigate();
-    
+
     // Redirect to dashboard if authenticated, otherwise to login
-    create_effect(move |_| {
+    Effect::new(move |_| {
         // TODO: Check authentication status
-        navigate("/login", Default::default()).ok();
+        navigate("/login", Default::default());
     });
     
     view! {

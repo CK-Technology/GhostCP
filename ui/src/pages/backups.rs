@@ -1,16 +1,22 @@
-// backups management page
-use leptos::*;
+// Backups management pages
+use leptos::prelude::*;
 
 #[component]
-pub fn backupsPage() -> impl IntoView {
+pub fn BackupsPage() -> impl IntoView {
     view! {
         <div class="container-fluid">
-            <h1>"backups Management"</h1>
-            <div class="card">
-                <div class="card-body">
-                    <p>"backups management functionality coming soon."</p>
-                </div>
-            </div>
+            <h1>"Backups"</h1>
+            <p>"Backups management functionality coming soon."</p>
+        </div>
+    }
+}
+
+#[component]
+pub fn NewBackupConfigPage() -> impl IntoView {
+    view! {
+        <div class="container-fluid">
+            <h1>"Add Backup Configuration"</h1>
+            <p>"Backup configuration form coming soon."</p>
         </div>
     }
 }

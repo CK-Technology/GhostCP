@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT enabled, verified, backup_codes FROM user_totp_secrets WHERE user_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "backup_codes",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "815fa8692807f01ce823a01f41f7e9c33c6766f6a9fad8624c735c218575bb77"
+}

@@ -3,9 +3,7 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileManager {
@@ -95,7 +93,7 @@ impl FileManager {
             };
             
             let modified = metadata.modified()
-                .map(|time| DateTime::from(time))
+                .map(DateTime::from)
                 .unwrap_or_else(|_| Utc::now());
             
             // Get permissions (Unix-like systems)
@@ -180,11 +178,10 @@ impl FileManager {
         let full_path = self.resolve_path(path)?;
         
         // Check if parent directory exists
-        if let Some(parent) = full_path.parent() {
-            if !parent.exists() {
+        if let Some(parent) = full_path.parent()
+            && !parent.exists() {
                 return Err(anyhow!("Parent directory does not exist"));
             }
-        }
         
         // Check file extension
         if let Some(extension) = full_path.extension() {
@@ -231,11 +228,10 @@ impl FileManager {
         
         // Protect important files
         let protected_files = [".htaccess", "index.php", "wp-config.php"];
-        if let Some(file_name) = full_path.file_name() {
-            if protected_files.contains(&file_name.to_string_lossy().as_ref()) {
+        if let Some(file_name) = full_path.file_name()
+            && protected_files.contains(&file_name.to_string_lossy().as_ref()) {
                 return Err(anyhow!("Cannot delete protected file"));
             }
-        }
         
         if full_path.is_dir() {
             fs::remove_dir_all(&full_path)?;
@@ -323,7 +319,7 @@ impl FileManager {
             match extension.to_string_lossy().to_lowercase().as_str() {
                 "zip" => {
                     std::process::Command::new("unzip")
-                        .args(&[
+                        .args([
                             "-q", 
                             archive_full_path.to_str().unwrap(),
                             "-d",
@@ -333,7 +329,7 @@ impl FileManager {
                 },
                 "tar" | "gz" => {
                     std::process::Command::new("tar")
-                        .args(&[
+                        .args([
                             "-xzf",
                             archive_full_path.to_str().unwrap(),
                             "-C",
@@ -422,7 +418,7 @@ impl FileManager {
         
         // Check if content is mostly ASCII/UTF-8
         let text_ratio = buffer[..bytes_read].iter()
-            .filter(|&&byte| byte >= 32 && byte <= 126 || byte == 9 || byte == 10 || byte == 13)
+            .filter(|&&byte| (32..=126).contains(&byte) || byte == 9 || byte == 10 || byte == 13)
             .count() as f64 / bytes_read as f64;
             
         Ok(text_ratio > 0.8)

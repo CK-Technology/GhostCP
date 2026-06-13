@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT name, status, memory_usage, cpu_usage, pid, timestamp\n        FROM service_statuses \n        WHERE name = $1 AND timestamp >= $2 \n        ORDER BY timestamp ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "memory_usage",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "cpu_usage",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 4,
+        "name": "pid",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "f44869cb04f5c1af6b4812d8f5e25d23f0080f97110c6f6d2a4f4d09eb258e0e"
+}
